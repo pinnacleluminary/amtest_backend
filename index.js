@@ -65,17 +65,35 @@ async function generateGraphs(graphData) {
     const height = 400;
     const backgroundColour = 'white';
     
-    // Configure ChartJS with better font settings
+    // Register fonts for server-side rendering
+    // This is crucial for environments like Railway where system fonts might not be available
+    const registerFont = (ChartJS) => {
+      // Use a simple sans-serif font stack that works well in headless environments
+      ChartJS.defaults.font = {
+        family: 'sans-serif',
+        size: 12,
+        style: 'normal',
+        weight: 'normal',
+        lineHeight: 1.2
+      };
+      
+      // Ensure all text elements use the same reliable font configuration
+      ChartJS.defaults.color = '#333';
+    };
+    
+    // Create chart with registered fonts
     const chartJSNodeCanvas = new ChartJSNodeCanvas({ 
       width, 
       height, 
-      backgroundColour
+      backgroundColour,
+      chartCallback: registerFont
     });
 
     const graphs = [];
 
     for (const graph of graphData) {
-      // Generate chart configuration with improved font settings
+      // Generate chart configuration with simplified text settings
+      // that work better in headless environments
       const configuration = {
         type: graph.type || 'line',
         data: {
@@ -94,58 +112,58 @@ async function generateGraphs(graphData) {
         },
         options: {
           responsive: true,
+          animation: false, // Disable animations for server-side rendering
           plugins: {
             title: {
               display: true,
-              text: Buffer.from(graph.title || 'Chart', 'utf8'),
+              text: graph.title || 'Chart',
               font: {
-                family: 'Arial, Helvetica, sans-serif',
-                size: 18,
+                size: 16,
                 weight: 'bold'
               },
-              padding: 20
+              padding: 20,
+              color: '#333'
             },
             legend: {
               display: true,
               position: 'top',
               labels: {
+                boxWidth: 40,
+                padding: 10,
                 font: {
-                  family: 'Arial, Helvetica, sans-serif',
-                  size: 14
+                  size: 12
                 },
-                padding: 15
+                color: '#333'
               }
             },
             tooltip: {
-              titleFont: {
-                family: 'Arial, Helvetica, sans-serif',
-                size: 14
-              },
-              bodyFont: {
-                family: 'Arial, Helvetica, sans-serif',
-                size: 12
-              },
-              padding: 10
+              enabled: false // Disable tooltips for server-side rendering
+            },
+            // Add data labels to make data points readable even without tooltips
+            datalabels: {
+              display: false // Disable data labels by default
             }
           },
           scales: {
             x: {
               title: {
                 display: true,
-                text: Buffer.from(graph.xAxisLabel || '', 'utf8'),
+                text: graph.xAxisLabel || '',
                 font: {
-                  family: 'Arial, Helvetica, sans-serif',
                   size: 14,
                   weight: 'bold'
                 },
-                padding: {top: 10, bottom: 10}
+                padding: {top: 10, bottom: 10},
+                color: '#333'
               },
               ticks: {
                 font: {
-                  family: 'Arial, Helvetica, sans-serif',
                   size: 12
                 },
-                padding: 8
+                padding: 8,
+                color: '#333',
+                maxRotation: 45, // Allow rotation for better readability
+                minRotation: 0
               },
               grid: {
                 color: 'rgba(0, 0, 0, 0.1)'
@@ -154,20 +172,20 @@ async function generateGraphs(graphData) {
             y: {
               title: {
                 display: true,
-                text: Buffer.from(graph.yAxisLabel || ''),
+                text: graph.yAxisLabel || '',
                 font: {
-                  family: 'Arial, Helvetica, sans-serif',
                   size: 14,
                   weight: 'bold'
                 },
-                padding: {top: 10, bottom: 10}
+                padding: {top: 10, bottom: 10},
+                color: '#333'
               },
               ticks: {
                 font: {
-                  family: 'Arial, Helvetica, sans-serif',
                   size: 12
                 },
-                padding: 8
+                padding: 8,
+                color: '#333'
               },
               grid: {
                 color: 'rgba(0, 0, 0, 0.1)'
@@ -195,14 +213,72 @@ async function generateGraphs(graphData) {
         }
       };
 
-      // Generate image buffer
-      const imageBuffer = await chartJSNodeCanvas.renderToBuffer(configuration);
-      const imageBase64 = imageBuffer.toString('base64');
+      // For server environments, we need to ensure the rendering completes
+      // by using a more robust approach with error handling
+      try {
+        // Generate image buffer with timeout handling
+        const renderPromise = chartJSNodeCanvas.renderToBuffer(configuration);
+        
+        // Add timeout to prevent hanging
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Chart rendering timed out')), 10000);
+        });
+        
+        // Use the first promise that resolves/rejects
+        const imageBuffer = await Promise.race([renderPromise, timeoutPromise]);
+        const imageBase64 = imageBuffer.toString('base64');
 
-      graphs.push({
-        title: graph.title || 'Chart',
-        imageBase64: imageBase64
-      });
+        graphs.push({
+          title: graph.title || 'Chart',
+          imageBase64: imageBase64
+        });
+      } catch (renderError) {
+        console.error('Error rendering chart:', renderError);
+        
+        // Create a fallback text-based chart representation
+        const fallbackCanvas = new ChartJSNodeCanvas({ width, height, backgroundColour });
+        const fallbackConfig = {
+          type: 'bar',
+          data: {
+            labels: ['Error rendering chart'],
+            datasets: [{
+              label: 'Chart rendering failed',
+              data: [1],
+              backgroundColor: 'rgba(255, 0, 0, 0.2)',
+              borderColor: 'rgba(255, 0, 0, 1)',
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              title: {
+                display: true,
+                text: 'Chart Rendering Error',
+                font: {
+                  size: 16,
+                  weight: 'bold'
+                }
+              },
+              subtitle: {
+                display: true,
+                text: 'Please check data format or try again',
+                font: {
+                  size: 12
+                }
+              }
+            }
+          }
+        };
+        
+        const fallbackBuffer = await fallbackCanvas.renderToBuffer(fallbackConfig);
+        const fallbackBase64 = fallbackBuffer.toString('base64');
+        
+        graphs.push({
+          title: 'Chart Rendering Error',
+          imageBase64: fallbackBase64
+        });
+      }
     }
 
     return graphs;
@@ -211,6 +287,7 @@ async function generateGraphs(graphData) {
     return [];
   }
 }
+
 
 
 async function createPDF(reportData, graphs) {
