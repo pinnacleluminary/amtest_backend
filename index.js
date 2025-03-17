@@ -8,6 +8,7 @@ const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
+const { registerFont } = require('canvas');
 require('dotenv').config();
 
 const app = express();
@@ -15,8 +16,28 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Define font paths
 const fontPath = path.join(__dirname, './assets/Helvetica.ttf');
 const fontBoldPath = path.join(__dirname, './assets/Helvetica-Bold.ttf');
+
+// Register fonts for canvas (used by Chart.js)
+try {
+  if (fs.existsSync(fontPath)) {
+    registerFont(fontPath, { family: 'Helvetica', weight: 'normal' });
+    console.log('Successfully registered Helvetica font for charts');
+  } else {
+    console.warn('Warning: Helvetica.ttf not found at:', fontPath);
+  }
+  
+  if (fs.existsSync(fontBoldPath)) {
+    registerFont(fontBoldPath, { family: 'Helvetica', weight: 'bold' });
+    console.log('Successfully registered Helvetica-Bold font for charts');
+  } else {
+    console.warn('Warning: Helvetica-Bold.ttf not found at:', fontBoldPath);
+  }
+} catch (fontError) {
+  console.error('Error registering fonts for charts:', fontError);
+}
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API,
@@ -58,38 +79,40 @@ app.post('/api/signup', async (req, res) => {
   }
 });
 
-// Function to generate graphs using Chart.js
+// Function to generate graphs using Chart.js with Helvetica font
 async function generateGraphs(graphData) {
   try {
     const width = 800;
     const height = 400;
     const backgroundColour = 'white';
     
-    // Create a more robust font configuration for containerized environments
+    // Create a chart callback that uses the registered Helvetica font
     const chartCallback = (ChartJS) => {
-      // Use only web-safe fonts that are guaranteed to be available
-      const safeFont = 'Arial, Helvetica, sans-serif';
+      // Check if Helvetica was successfully registered
+      const fontFamily = fs.existsSync(fontPath) ? 'Helvetica' : 'Arial, Helvetica, sans-serif';
       
-      // Apply the safe font to all text elements
-      ChartJS.defaults.font.family = safeFont;
+      // Apply the font configuration globally
+      ChartJS.defaults.font = {
+        family: fontFamily,
+        size: 12,
+        weight: 'normal',
+        lineHeight: 1.2
+      };
+      
       ChartJS.defaults.color = '#333';
       
-      // Ensure all text is readable by setting minimum sizes
-      ChartJS.defaults.font.size = 12;
-      ChartJS.defaults.font.weight = 'normal';
-      
-      // Register global plugins to handle font fallbacks
+      // Register a plugin to ensure consistent font rendering
       ChartJS.register({
-        id: 'fontFallback',
+        id: 'fontHandler',
         beforeDraw: (chart) => {
           const ctx = chart.ctx;
-          ctx.font = `${ChartJS.defaults.font.size}px ${safeFont}`;
           ctx.textBaseline = 'middle';
+          ctx.font = `${ChartJS.defaults.font.size}px ${fontFamily}`;
         }
       });
     };
     
-    // Create chart with enhanced font handling
+    // Create chart with Helvetica font handling
     const chartJSNodeCanvas = new ChartJSNodeCanvas({ 
       width, 
       height, 
@@ -100,8 +123,10 @@ async function generateGraphs(graphData) {
     const graphs = [];
 
     for (const graph of graphData) {
-      // Generate chart configuration with simplified text settings
-      // that work better in headless environments
+      // Determine which font to use
+      const fontFamily = fs.existsSync(fontPath) ? 'Helvetica' : 'Arial, Helvetica, sans-serif';
+      
+      // Generate chart configuration with Helvetica font
       const configuration = {
         type: graph.type || 'line',
         data: {
@@ -128,7 +153,7 @@ async function generateGraphs(graphData) {
               font: {
                 size: 16,
                 weight: 'bold',
-                family: 'Arial, Helvetica, sans-serif' // Explicitly set font family
+                family: fontFamily // Use Helvetica
               },
               padding: 20,
               color: '#333'
@@ -141,7 +166,7 @@ async function generateGraphs(graphData) {
                 padding: 10,
                 font: {
                   size: 12,
-                  family: 'Arial, Helvetica, sans-serif' // Explicitly set font family
+                  family: fontFamily // Use Helvetica
                 },
                 color: '#333'
               }
@@ -157,11 +182,11 @@ async function generateGraphs(graphData) {
             x: {
               title: {
                 display: true,
-                text: 'FF',
+                text: graph.xAxisLabel || '',
                 font: {
                   size: 14,
                   weight: 'bold',
-                  family: 'Arial, Helvetica, sans-serif' // Explicitly set font family
+                  family: fontFamily // Use Helvetica
                 },
                 padding: {top: 10, bottom: 10},
                 color: '#333'
@@ -169,7 +194,7 @@ async function generateGraphs(graphData) {
               ticks: {
                 font: {
                   size: 12,
-                  family: 'Arial, Helvetica, sans-serif' // Explicitly set font family
+                  family: fontFamily // Use Helvetica
                 },
                 padding: 8,
                 color: '#333',
@@ -187,7 +212,7 @@ async function generateGraphs(graphData) {
                 font: {
                   size: 14,
                   weight: 'bold',
-                  family: 'Arial, Helvetica, sans-serif' // Explicitly set font family
+                  family: fontFamily // Use Helvetica
                 },
                 padding: {top: 10, bottom: 10},
                 color: '#333'
@@ -195,7 +220,7 @@ async function generateGraphs(graphData) {
               ticks: {
                 font: {
                   size: 12,
-                  family: 'Arial, Helvetica, sans-serif' // Explicitly set font family
+                  family: fontFamily // Use Helvetica
                 },
                 padding: 8,
                 color: '#333'
@@ -267,7 +292,7 @@ async function generateGraphs(graphData) {
                 font: {
                   size: 16,
                   weight: 'bold',
-                  family: 'Arial, Helvetica, sans-serif'
+                  family: 'Arial, Helvetica, sans-serif' // Fallback font for error chart
                 }
               }
             }
@@ -299,9 +324,6 @@ async function generateGraphs(graphData) {
     return [];
   }
 }
-
-
-
 
 async function createPDF(reportData, graphs) {
   return new Promise((resolve, reject) => {
@@ -765,7 +787,7 @@ async function createPDF(reportData, graphs) {
         .rect(25 + leftColWidth, footerY + 25, rightColWidth / 2, 25)
         .stroke();
 
-      doc.rect(25 + leftColWidth + rightColWidth / 2, footerY + 25, rightColWidth / 2, 25)
+        doc.rect(25 + leftColWidth + rightColWidth / 2, footerY + 25, rightColWidth / 2, 25)
         .fillColor('#ffffff')
         .fill();
 
@@ -1053,7 +1075,6 @@ async function createPDF(reportData, graphs) {
   });
 }
 
-
 // Image parser endpoint (modified to generate PDF with graphs)
 app.post('/api/imageparser', async (req, res) => {
   try {
@@ -1162,8 +1183,6 @@ IMPORTANT: DO NOT return complex objects or arrays as values in testInfo or calc
   }
 });
 
-
-
 // Excel Analysis endpoint
 app.post('/api/excelAnalysis', async (req, res) => {
   try {
@@ -1225,6 +1244,11 @@ app.post('/api/login', async (req, res) => {
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
+});
+
+// Health check endpoint for Railway
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
 });
 
 // Clean up temp files periodically
