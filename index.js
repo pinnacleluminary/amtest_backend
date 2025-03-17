@@ -65,28 +65,36 @@ async function generateGraphs(graphData) {
     const height = 400;
     const backgroundColour = 'white';
     
-    // Register fonts for server-side rendering
-    // This is crucial for environments like Railway where system fonts might not be available
-    const registerFont = (ChartJS) => {
-      // Use a simple sans-serif font stack that works well in headless environments
-      ChartJS.defaults.font = {
-        family: 'sans-serif',
-        size: 12,
-        style: 'normal',
-        weight: 'normal',
-        lineHeight: 1.2
-      };
+    // Create a more robust font configuration for containerized environments
+    const chartCallback = (ChartJS) => {
+      // Use only web-safe fonts that are guaranteed to be available
+      const safeFont = 'Arial, Helvetica, sans-serif';
       
-      // Ensure all text elements use the same reliable font configuration
+      // Apply the safe font to all text elements
+      ChartJS.defaults.font.family = safeFont;
       ChartJS.defaults.color = '#333';
+      
+      // Ensure all text is readable by setting minimum sizes
+      ChartJS.defaults.font.size = 12;
+      ChartJS.defaults.font.weight = 'normal';
+      
+      // Register global plugins to handle font fallbacks
+      ChartJS.register({
+        id: 'fontFallback',
+        beforeDraw: (chart) => {
+          const ctx = chart.ctx;
+          ctx.font = `${ChartJS.defaults.font.size}px ${safeFont}`;
+          ctx.textBaseline = 'middle';
+        }
+      });
     };
     
-    // Create chart with registered fonts
+    // Create chart with enhanced font handling
     const chartJSNodeCanvas = new ChartJSNodeCanvas({ 
       width, 
       height, 
       backgroundColour,
-      chartCallback: registerFont
+      chartCallback: chartCallback
     });
 
     const graphs = [];
@@ -119,7 +127,8 @@ async function generateGraphs(graphData) {
               text: graph.title || 'Chart',
               font: {
                 size: 16,
-                weight: 'bold'
+                weight: 'bold',
+                family: 'Arial, Helvetica, sans-serif' // Explicitly set font family
               },
               padding: 20,
               color: '#333'
@@ -131,7 +140,8 @@ async function generateGraphs(graphData) {
                 boxWidth: 40,
                 padding: 10,
                 font: {
-                  size: 12
+                  size: 12,
+                  family: 'Arial, Helvetica, sans-serif' // Explicitly set font family
                 },
                 color: '#333'
               }
@@ -139,7 +149,6 @@ async function generateGraphs(graphData) {
             tooltip: {
               enabled: false // Disable tooltips for server-side rendering
             },
-            // Add data labels to make data points readable even without tooltips
             datalabels: {
               display: false // Disable data labels by default
             }
@@ -151,18 +160,20 @@ async function generateGraphs(graphData) {
                 text: graph.xAxisLabel || '',
                 font: {
                   size: 14,
-                  weight: 'bold'
+                  weight: 'bold',
+                  family: 'Arial, Helvetica, sans-serif' // Explicitly set font family
                 },
                 padding: {top: 10, bottom: 10},
                 color: '#333'
               },
               ticks: {
                 font: {
-                  size: 12
+                  size: 12,
+                  family: 'Arial, Helvetica, sans-serif' // Explicitly set font family
                 },
                 padding: 8,
                 color: '#333',
-                maxRotation: 45, // Allow rotation for better readability
+                maxRotation: 45,
                 minRotation: 0
               },
               grid: {
@@ -175,14 +186,16 @@ async function generateGraphs(graphData) {
                 text: graph.yAxisLabel || '',
                 font: {
                   size: 14,
-                  weight: 'bold'
+                  weight: 'bold',
+                  family: 'Arial, Helvetica, sans-serif' // Explicitly set font family
                 },
                 padding: {top: 10, bottom: 10},
                 color: '#333'
               },
               ticks: {
                 font: {
-                  size: 12
+                  size: 12,
+                  family: 'Arial, Helvetica, sans-serif' // Explicitly set font family
                 },
                 padding: 8,
                 color: '#333'
@@ -203,7 +216,7 @@ async function generateGraphs(graphData) {
           },
           elements: {
             line: {
-              tension: 0.4 // Smoother curves
+              tension: 0.4
             },
             point: {
               radius: 4,
@@ -213,18 +226,14 @@ async function generateGraphs(graphData) {
         }
       };
 
-      // For server environments, we need to ensure the rendering completes
-      // by using a more robust approach with error handling
       try {
-        // Generate image buffer with timeout handling
+        // Add additional error handling and timeout
         const renderPromise = chartJSNodeCanvas.renderToBuffer(configuration);
         
-        // Add timeout to prevent hanging
         const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Chart rendering timed out')), 10000);
+          setTimeout(() => reject(new Error('Chart rendering timed out')), 15000);
         });
         
-        // Use the first promise that resolves/rejects
         const imageBuffer = await Promise.race([renderPromise, timeoutPromise]);
         const imageBase64 = imageBuffer.toString('base64');
 
@@ -235,12 +244,12 @@ async function generateGraphs(graphData) {
       } catch (renderError) {
         console.error('Error rendering chart:', renderError);
         
-        // Create a fallback text-based chart representation
+        // Create a simpler fallback chart with minimal text
         const fallbackCanvas = new ChartJSNodeCanvas({ width, height, backgroundColour });
         const fallbackConfig = {
           type: 'bar',
           data: {
-            labels: ['Error rendering chart'],
+            labels: ['Error'],
             datasets: [{
               label: 'Chart rendering failed',
               data: [1],
@@ -257,27 +266,30 @@ async function generateGraphs(graphData) {
                 text: 'Chart Rendering Error',
                 font: {
                   size: 16,
-                  weight: 'bold'
-                }
-              },
-              subtitle: {
-                display: true,
-                text: 'Please check data format or try again',
-                font: {
-                  size: 12
+                  weight: 'bold',
+                  family: 'Arial, Helvetica, sans-serif'
                 }
               }
             }
           }
         };
         
-        const fallbackBuffer = await fallbackCanvas.renderToBuffer(fallbackConfig);
-        const fallbackBase64 = fallbackBuffer.toString('base64');
-        
-        graphs.push({
-          title: 'Chart Rendering Error',
-          imageBase64: fallbackBase64
-        });
+        try {
+          const fallbackBuffer = await fallbackCanvas.renderToBuffer(fallbackConfig);
+          const fallbackBase64 = fallbackBuffer.toString('base64');
+          
+          graphs.push({
+            title: 'Chart Rendering Error',
+            imageBase64: fallbackBase64
+          });
+        } catch (fallbackError) {
+          console.error('Fallback chart also failed:', fallbackError);
+          // Return a static error image or placeholder
+          graphs.push({
+            title: 'Chart Error',
+            imageBase64: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAYAAAB5fY51AAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH4QQQEwksSS9ZWwAAAB1pVFh0Q29tbWVudAAAAAAAQ3JlYXRlZCB3aXRoIEdJTVBkLmUHAAAC2klEQVR42u3csU0DMQBAERNCSAhEQTQIKVBX0qCgQFYgKZgVIBQEaYDYQB3ERYfkFpz8oPiRvuf10jV3DgsUcpRzzgGAjG4BQGABEFgABBYAgQVAYAEQWAAEFgCBBUBgARBYAAQWAIEFQGABEFgABBYAgQVAYAEQWAAEFgCBBUBgARBYAAQWAIEFQGABEFgABBYAgQVAYAEQWAAEFgCBBUBgARBYAAQWAIEFQGABEFgABBYAgQVAYAEQWAAEFgCBBUBgAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACMmV8CHarSJXohbmwAAAAASUVORK5CYII='
+          });
+        }
       }
     }
 
@@ -287,6 +299,7 @@ async function generateGraphs(graphData) {
     return [];
   }
 }
+
 
 
 
