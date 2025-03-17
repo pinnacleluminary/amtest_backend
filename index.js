@@ -75,13 +75,12 @@ async function generateGraphs(graphData) {
     const graphs = [];
 
     for (const graph of graphData) {
-      // Generate chart configuration with improved font settings
       const configuration = {
         type: graph.type || 'line',
         data: {
-          labels: graph.labels,
+          labels: Buffer.from(graph.labels, 'utf8'),
           datasets: graph.datasets.map(dataset => ({
-            label: dataset.label,
+            label: Buffer.from(dataset.label, 'utf8'),
             data: dataset.data,
             backgroundColor: dataset.backgroundColor || 'rgba(54, 162, 235, 0.2)',
             borderColor: dataset.borderColor || 'rgba(54, 162, 235, 1)',
@@ -97,9 +96,9 @@ async function generateGraphs(graphData) {
           plugins: {
             title: {
               display: true,
-              text: graph.title || 'Chart',
+              text: Buffer.from(graph.title || 'Chart', 'utf8'),
               font: {
-                family: 'Arial, Helvetica, sans-serif',
+                // family: 'Arial, Helvetica, sans-serif',
                 size: 18,
                 weight: 'bold'
               },
@@ -110,7 +109,7 @@ async function generateGraphs(graphData) {
               position: 'top',
               labels: {
                 font: {
-                  family: 'Arial, Helvetica, sans-serif',
+                  // family: 'Arial, Helvetica, sans-serif',
                   size: 14
                 },
                 padding: 15
@@ -118,11 +117,11 @@ async function generateGraphs(graphData) {
             },
             tooltip: {
               titleFont: {
-                family: 'Arial, Helvetica, sans-serif',
+                // family: 'Arial, Helvetica, sans-serif',
                 size: 14
               },
               bodyFont: {
-                family: 'Arial, Helvetica, sans-serif',
+                // family: 'Arial, Helvetica, sans-serif',
                 size: 12
               },
               padding: 10
@@ -134,7 +133,7 @@ async function generateGraphs(graphData) {
                 display: true,
                 text: graph.xAxisLabel || '',
                 font: {
-                  family: 'Arial, Helvetica, sans-serif',
+                  // family: 'Arial, Helvetica, sans-serif',
                   size: 14,
                   weight: 'bold'
                 },
@@ -142,7 +141,7 @@ async function generateGraphs(graphData) {
               },
               ticks: {
                 font: {
-                  family: 'Arial, Helvetica, sans-serif',
+                  // family: 'Arial, Helvetica, sans-serif',
                   size: 12
                 },
                 padding: 8
@@ -154,9 +153,9 @@ async function generateGraphs(graphData) {
             y: {
               title: {
                 display: true,
-                text: graph.yAxisLabel || '',
+                text: Buffer.from(graph.yAxisLabel || ''),
                 font: {
-                  family: 'Arial, Helvetica, sans-serif',
+                  // family: 'Arial, Helvetica, sans-serif',
                   size: 14,
                   weight: 'bold'
                 },
@@ -164,7 +163,7 @@ async function generateGraphs(graphData) {
               },
               ticks: {
                 font: {
-                  family: 'Arial, Helvetica, sans-serif',
+                  // family: 'Arial, Helvetica, sans-serif',
                   size: 12
                 },
                 padding: 8
@@ -297,8 +296,8 @@ async function createPDF(reportData, graphs) {
         // Handle special cases like "testType" -> "Test Type"
         return key
           .replace(/([A-Z])/g, ' $1') // Insert space before capital letters
-          .replace(/^./, str => str.toUpperCase()) // Capitalize first letter
-          .replace(/\s+/g, ' ') // Remove extra spaces
+          .replace(/^./, str => str.toUpperCase())
+          .replace(/\s+/g, ' ')
           .trim();
       };
 
