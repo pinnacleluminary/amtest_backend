@@ -157,7 +157,7 @@ async function generateGraphs(graphData) {
             x: {
               title: {
                 display: true,
-                text: graph.xAxisLabel || '',
+                text: 'FF',
                 font: {
                   size: 14,
                   weight: 'bold',
