@@ -75,12 +75,13 @@ async function generateGraphs(graphData) {
     const graphs = [];
 
     for (const graph of graphData) {
+      // Generate chart configuration with improved font settings
       const configuration = {
         type: graph.type || 'line',
         data: {
-          labels: Buffer.from(graph.labels, 'utf8'),
+          labels: graph.labels,
           datasets: graph.datasets.map(dataset => ({
-            label: Buffer.from(dataset.label, 'utf8'),
+            label: dataset.label,
             data: dataset.data,
             backgroundColor: dataset.backgroundColor || 'rgba(54, 162, 235, 0.2)',
             borderColor: dataset.borderColor || 'rgba(54, 162, 235, 1)',
@@ -98,7 +99,7 @@ async function generateGraphs(graphData) {
               display: true,
               text: Buffer.from(graph.title || 'Chart', 'utf8'),
               font: {
-                // family: 'Arial, Helvetica, sans-serif',
+                family: 'Arial, Helvetica, sans-serif',
                 size: 18,
                 weight: 'bold'
               },
@@ -109,7 +110,7 @@ async function generateGraphs(graphData) {
               position: 'top',
               labels: {
                 font: {
-                  // family: 'Arial, Helvetica, sans-serif',
+                  family: 'Arial, Helvetica, sans-serif',
                   size: 14
                 },
                 padding: 15
@@ -117,11 +118,11 @@ async function generateGraphs(graphData) {
             },
             tooltip: {
               titleFont: {
-                // family: 'Arial, Helvetica, sans-serif',
+                family: 'Arial, Helvetica, sans-serif',
                 size: 14
               },
               bodyFont: {
-                // family: 'Arial, Helvetica, sans-serif',
+                family: 'Arial, Helvetica, sans-serif',
                 size: 12
               },
               padding: 10
@@ -131,9 +132,9 @@ async function generateGraphs(graphData) {
             x: {
               title: {
                 display: true,
-                text: graph.xAxisLabel || '',
+                text: Buffer.from(graph.xAxisLabel || '', 'utf8'),
                 font: {
-                  // family: 'Arial, Helvetica, sans-serif',
+                  family: 'Arial, Helvetica, sans-serif',
                   size: 14,
                   weight: 'bold'
                 },
@@ -141,7 +142,7 @@ async function generateGraphs(graphData) {
               },
               ticks: {
                 font: {
-                  // family: 'Arial, Helvetica, sans-serif',
+                  family: 'Arial, Helvetica, sans-serif',
                   size: 12
                 },
                 padding: 8
@@ -155,7 +156,7 @@ async function generateGraphs(graphData) {
                 display: true,
                 text: Buffer.from(graph.yAxisLabel || ''),
                 font: {
-                  // family: 'Arial, Helvetica, sans-serif',
+                  family: 'Arial, Helvetica, sans-serif',
                   size: 14,
                   weight: 'bold'
                 },
@@ -163,7 +164,7 @@ async function generateGraphs(graphData) {
               },
               ticks: {
                 font: {
-                  // family: 'Arial, Helvetica, sans-serif',
+                  family: 'Arial, Helvetica, sans-serif',
                   size: 12
                 },
                 padding: 8
