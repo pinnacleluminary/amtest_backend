@@ -7,7 +7,8 @@ const { createClient } = require('@supabase/supabase-js');
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
-const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
+// Removing ChartJSNodeCanvas and importing sharp for image processing
+const sharp = require('sharp');
 require('dotenv').config();
 
 const app = express();
@@ -58,77 +59,118 @@ app.post('/api/signup', async (req, res) => {
   }
 });
 
-// Function to generate graphs using Chart.js
+// Helper function to format property names from camelCase to Title Case with spaces
+function formatPropertyName(propertyName) {
+  // First, handle special cases like "testType" -> "Test Type"
+  return propertyName
+    .replace(/([A-Z])/g, ' $1') // Insert space before capital letters
+    .replace(/^./, str => str.toUpperCase()) // Capitalize first letter
+    .trim(); // Remove any extra spaces
+}
+
+// New function to generate graphs using SVG instead of Canvas
 async function generateGraphs(graphData) {
   try {
-    const width = 800;
-    const height = 400;
-    const backgroundColour = 'white';
-    const chartJSNodeCanvas = new ChartJSNodeCanvas({ width, height, backgroundColour });
-
     const graphs = [];
-
+    
     for (const graph of graphData) {
-      // Generate chart configuration
-      const configuration = {
-        type: graph.type || 'line',
-        data: {
-          labels: graph.labels,
-          datasets: graph.datasets.map(dataset => ({
-            label: dataset.label,
-            data: dataset.data,
-            backgroundColor: dataset.backgroundColor || 'rgba(54, 162, 235, 0.2)',
-            borderColor: dataset.borderColor || 'rgba(54, 162, 235, 1)',
-            borderWidth: dataset.borderWidth || 1,
-            pointBackgroundColor: dataset.pointBackgroundColor || 'rgba(54, 162, 235, 1)',
-            pointBorderColor: dataset.pointBorderColor || '#fff',
-            pointRadius: dataset.pointRadius || 4,
-            fill: dataset.fill !== undefined ? dataset.fill : false
-          }))
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            title: {
-              display: true,
-              text: graph.title || 'Chart',
-              font: {
-                size: 16
-              }
-            },
-            legend: {
-              display: true,
-              position: 'top'
-            }
-          },
-          scales: {
-            x: {
-              title: {
-                display: true,
-                text: graph.xAxisLabel || ''
-              }
-            },
-            y: {
-              title: {
-                display: true,
-                text: graph.yAxisLabel || ''
-              },
-              beginAtZero: graph.beginAtZero !== undefined ? graph.beginAtZero : true
-            }
-          }
+      // Define SVG dimensions
+      const width = 800;
+      const height = 400;
+      const padding = 50; // Padding for axes and labels
+      
+      // Calculate scales
+      const data = graph.datasets[0].data;
+      const labels = graph.labels;
+      const maxY = Math.max(...data) * 1.1; // Add 10% padding
+      const minY = graph.beginAtZero ? 0 : Math.min(...data) * 0.9;
+      
+      // Calculate scale factors
+      const xScale = (width - padding * 2) / (labels.length - 1);
+      const yScale = (height - padding * 2) / (maxY - minY);
+      
+      // Generate SVG content
+      let svgContent = `
+      <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+        <rect width="${width}" height="${height}" fill="white"/>
+        
+        <!-- Title -->
+        <text x="${width/2}" y="20" text-anchor="middle" font-family="Arial" font-size="16" font-weight="bold">${graph.title || 'Chart'}</text>
+        
+        <!-- Y-axis -->
+        <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height-padding}" stroke="black" stroke-width="1"/>
+        
+        <!-- X-axis -->
+        <line x1="${padding}" y1="${height-padding}" x2="${width-padding}" y2="${height-padding}" stroke="black" stroke-width="1"/>
+        
+        <!-- Y-axis label -->
+        <text x="15" y="${height/2}" text-anchor="middle" font-family="Arial" font-size="12" transform="rotate(-90, 15, ${height/2})">${graph.yAxisLabel || ''}</text>
+        
+        <!-- X-axis label -->
+        <text x="${width/2}" y="${height-10}" text-anchor="middle" font-family="Arial" font-size="12">${graph.xAxisLabel || ''}</text>
+      `;
+      
+      // Add Y-axis ticks and labels
+      const yTickCount = 5;
+      for (let i = 0; i <= yTickCount; i++) {
+        const yValue = minY + (maxY - minY) * (i / yTickCount);
+        const yPos = height - padding - (yValue - minY) * yScale;
+        
+        svgContent += `
+          <line x1="${padding-5}" y1="${yPos}" x2="${padding}" y2="${yPos}" stroke="black" stroke-width="1"/>
+          <text x="${padding-10}" y="${yPos+5}" text-anchor="end" font-family="Arial" font-size="10">${yValue.toFixed(1)}</text>
+        `;
+      }
+      
+      // Add X-axis ticks and labels
+      for (let i = 0; i < labels.length; i++) {
+        const xPos = padding + i * xScale;
+        
+        svgContent += `
+          <line x1="${xPos}" y1="${height-padding}" x2="${xPos}" y2="${height-padding+5}" stroke="black" stroke-width="1"/>
+          <text x="${xPos}" y="${height-padding+20}" text-anchor="middle" font-family="Arial" font-size="10">${labels[i]}</text>
+        `;
+      }
+      
+      // Add data points and line
+      let pathData = '';
+      
+      for (let i = 0; i < data.length; i++) {
+        const xPos = padding + i * xScale;
+        const yPos = height - padding - (data[i] - minY) * yScale;
+        
+        if (i === 0) {
+          pathData = `M ${xPos} ${yPos}`;
+        } else {
+          pathData += ` L ${xPos} ${yPos}`;
         }
-      };
-
-      // Generate image buffer
-      const imageBuffer = await chartJSNodeCanvas.renderToBuffer(configuration);
-      const imageBase64 = imageBuffer.toString('base64');
-
+        
+        // Add data points as circles
+        svgContent += `
+          <circle cx="${xPos}" cy="${yPos}" r="4" fill="${graph.datasets[0].pointBackgroundColor || 'rgba(54, 162, 235, 1)'}" stroke="${graph.datasets[0].pointBorderColor || '#fff'}" stroke-width="1"/>
+        `;
+      }
+      
+      // Add the line path
+      svgContent += `
+        <path d="${pathData}" fill="none" stroke="${graph.datasets[0].borderColor || 'rgba(54, 162, 235, 1)'}" stroke-width="2"/>
+        
+        <!-- Legend -->
+        <rect x="${width-padding-100}" y="40" width="10" height="10" fill="${graph.datasets[0].backgroundColor || 'rgba(54, 162, 235, 0.2)'}" stroke="${graph.datasets[0].borderColor || 'rgba(54, 162, 235, 1)'}" stroke-width="1"/>
+        <text x="${width-padding-85}" y="50" font-family="Arial" font-size="12">${graph.datasets[0].label}</text>
+      </svg>
+      `;
+      
+      // Convert SVG to PNG using sharp
+      const svgBuffer = Buffer.from(svgContent);
+      const pngBuffer = await sharp(svgBuffer).png().toBuffer();
+      
       graphs.push({
         title: graph.title || 'Chart',
-        imageBase64: imageBase64
+        imageBase64: pngBuffer.toString('base64')
       });
     }
-
+    
     return graphs;
   } catch (error) {
     console.error('Error generating graphs:', error);
@@ -148,7 +190,6 @@ async function createPDF(reportData, graphs) {
         size: 'A4',
         bufferPages: true
       });
-
 
       doc.registerFont('Helvetica', fontPath);
       doc.registerFont('Helvetica-Bold', fontBoldPath);
@@ -216,19 +257,23 @@ async function createPDF(reportData, graphs) {
         return String(value);
       };
 
-      // Simplify all test info
+      // Simplify and format all test info
       const simplifiedTestInfo = {};
       if (reportData.testInfo) {
         Object.entries(reportData.testInfo).forEach(([key, value]) => {
-          simplifiedTestInfo[key] = simplifyValue(value);
+          // Format the key for display
+          const formattedKey = formatPropertyName(key);
+          simplifiedTestInfo[formattedKey] = simplifyValue(value);
         });
       }
 
-      // Simplify all calculated properties
+      // Simplify and format all calculated properties
       const simplifiedProperties = {};
       if (reportData.calculatedProperties) {
         Object.entries(reportData.calculatedProperties).forEach(([key, value]) => {
-          simplifiedProperties[key] = simplifyValue(value);
+          // Format the key for display
+          const formattedKey = formatPropertyName(key);
+          simplifiedProperties[formattedKey] = simplifyValue(value);
         });
       }
 
@@ -279,21 +324,24 @@ async function createPDF(reportData, graphs) {
                 .rect(colX, currentY, colWidth, rowHeight)
                 .stroke();
 
-              // Draw label with smaller font
+              // Draw label with smaller font - VERTICALLY CENTERED
+              const textHeight = 7; // Approximate height of the text
+              const verticalPadding = (rowHeight - textHeight) / 2; // Calculate padding to center text
+
               doc.fontSize(7)
                 .font('Helvetica-Bold')
                 .fillColor('#333333')
-                .text(key + ':', colX + 3, currentY + 2, {
+                .text(key + ':', colX + 3, currentY + verticalPadding, {
                   width: colWidth * 0.4 - 5,
                   height: rowHeight - 4,
                   ellipsis: true
                 });
 
-              // Draw value with smaller font and text truncation for long values
+              // Draw value with smaller font and text truncation for long values - VERTICALLY CENTERED
               doc.fontSize(7)
                 .font('Helvetica')
                 .fillColor('#333333')
-                .text(value, colX + 3 + (colWidth * 0.4), currentY + 2, {
+                .text(value, colX + 3 + (colWidth * 0.4), currentY + verticalPadding, {
                   width: colWidth * 0.6 - 5,
                   height: rowHeight - 4,
                   ellipsis: true
@@ -395,7 +443,10 @@ async function createPDF(reportData, graphs) {
         const tableX = 25 + leftBoxWidth + 10;
 
         // Calculate row height based on available space and number of properties
-        const propertyCount = Object.keys(simplifiedProperties).length;
+        // LIMIT TO MAXIMUM 6 PROPERTIES as requested
+        const propertyKeys = Object.keys(simplifiedProperties).slice(0, 6); // Limit to max 6 properties
+        const propertyCount = propertyKeys.length;
+        
         // Increase minimum row height to prevent text overlap
         const minRowHeight = 25;
         const availableHeight = boxHeight - 50; // Account for header
@@ -415,21 +466,25 @@ async function createPDF(reportData, graphs) {
         // Draw header text (Property | Value)
         const colWidth = tableWidth / 2;
 
-        // Property header
+        // Property header - VERTICALLY CENTERED
         doc.rect(tableX, tableStartY, colWidth, rowHeight)
           .strokeColor('#000000')
           .lineWidth(0.5)
           .stroke();
 
+        // Calculate vertical position to center text
+        const headerTextHeight = 8; // Approximate height of the text
+        const headerVerticalPadding = (rowHeight - headerTextHeight) / 2;
+
         doc.fontSize(8).font('Helvetica-Bold')
           .fillColor('#000000')
           .text('Property',
-            tableX + 5, tableStartY + (rowHeight / 2) - 4, {
+            tableX + 5, tableStartY + headerVerticalPadding, {
             width: colWidth - 10,
             align: 'left'
           });
 
-        // Value header
+        // Value header - VERTICALLY CENTERED
         doc.rect(tableX + colWidth, tableStartY, colWidth, rowHeight)
           .strokeColor('#000000')
           .lineWidth(0.5)
@@ -438,14 +493,18 @@ async function createPDF(reportData, graphs) {
         doc.fontSize(8).font('Helvetica-Bold')
           .fillColor('#000000')
           .text('Value',
-            tableX + colWidth + 5, tableStartY + (rowHeight / 2) - 4, {
+            tableX + colWidth + 5, tableStartY + headerVerticalPadding, {
             width: colWidth - 10,
             align: 'left'
           });
 
         // Draw data rows
         let rowY = tableStartY + rowHeight;
-        Object.entries(simplifiedProperties).forEach(([key, value], index) => {
+        
+        // Use the limited set of properties (max 6)
+        propertyKeys.forEach((key, index) => {
+          const value = simplifiedProperties[key];
+          
           // Skip if we're running out of space
           if (rowY > currentY + boxHeight - rowHeight) return;
 
@@ -465,17 +524,15 @@ async function createPDF(reportData, graphs) {
             .lineWidth(0.5)
             .stroke();
 
-          // Format property name to prevent wrapping and overflow
-          // Break camelCase into separate words with proper capitalization
-          const formattedKey = key
-            .replace(/([A-Z])/g, ' $1') // Insert space before capital letters
-            .replace(/^./, str => str.toUpperCase()); // Capitalize first letter
+          // Calculate vertical position to center text
+          const cellTextHeight = 7; // Approximate height of the text
+          const cellVerticalPadding = (rowHeight - cellTextHeight) / 2;
 
-          // Draw property name with word wrapping
+          // Draw property name with word wrapping - VERTICALLY CENTERED
           doc.fontSize(7).font('Helvetica')
             .fillColor('#000000')
-            .text(formattedKey,
-              tableX + 5, rowY + 5, {
+            .text(key, // Already formatted by this point
+              tableX + 5, rowY + cellVerticalPadding, {
               width: colWidth - 10,
               height: rowHeight - 10,
               align: 'left'
@@ -487,11 +544,11 @@ async function createPDF(reportData, graphs) {
             .lineWidth(0.5)
             .stroke();
 
-          // Draw value with word wrapping if needed
+          // Draw value with word wrapping if needed - VERTICALLY CENTERED
           doc.fontSize(7).font('Helvetica')
             .fillColor('#000000')
             .text(value,
-              tableX + colWidth + 5, rowY + 5, {
+              tableX + colWidth + 5, rowY + cellVerticalPadding, {
               width: colWidth - 10,
               height: rowHeight - 10,
               align: 'left'
@@ -541,24 +598,29 @@ async function createPDF(reportData, graphs) {
         .rect(25 + leftColWidth, footerY, rightColWidth, 25)
         .stroke();
 
-      // Comments header text - FIXED: reduced font size and improved layout
+      // Comments header text - VERTICALLY CENTERED
+      const commentsTextHeight = 8;
+      const commentsVerticalPadding = (25 - commentsTextHeight) / 2;
+      
       doc.fontSize(8)
         .font('Helvetica')
         .fillColor('#000000')
         .text('Comments (e.g., any deviation from the standard test method, relevant information to the specific test)',
-          30, footerY + 8, {
+          30, footerY + commentsVerticalPadding, {
           width: leftColWidth - 15,
           ellipsis: false,
           lineBreak: true,
           height: 25
         });
 
-
-      // For and on behalf of AMTEST UK header text
+      // For and on behalf of AMTEST UK header text - VERTICALLY CENTERED
+      const amtestTextHeight = 9;
+      const amtestVerticalPadding = (25 - amtestTextHeight) / 2;
+      
       doc.fontSize(9).font('Helvetica')
         .fillColor('#000000')
         .text('For and on behalf of AMTEST UK',
-          30 + leftColWidth, footerY + 8, {
+          30 + leftColWidth, footerY + amtestVerticalPadding, {
           width: rightColWidth - 10,
           align: 'center',
           ellipsis: true
@@ -593,11 +655,14 @@ async function createPDF(reportData, graphs) {
         .rect(25 + leftColWidth + rightColWidth / 2, footerY + 25, rightColWidth / 2, 25)
         .stroke();
 
-      // Approved by text
+      // Approved by text - VERTICALLY CENTERED
+      const approvedTextHeight = 9;
+      const approvedVerticalPadding = (25 - approvedTextHeight) / 2;
+      
       doc.fontSize(9).font('Helvetica')
         .fillColor('#000000')
         .text('Approved by:',
-          30 + leftColWidth, footerY + 33, {
+          30 + leftColWidth, footerY + 25 + approvedVerticalPadding, {
           width: rightColWidth / 2 - 10,
           ellipsis: true
         });
@@ -605,7 +670,7 @@ async function createPDF(reportData, graphs) {
       doc.fontSize(9).font('Helvetica')
         .fillColor('#000000')
         .text('R.Adams',
-          30 + leftColWidth + rightColWidth / 2, footerY + 33, {
+          30 + leftColWidth + rightColWidth / 2, footerY + 25 + approvedVerticalPadding, {
           width: rightColWidth / 2 - 10,
           align: 'center',
           ellipsis: true
@@ -630,11 +695,14 @@ async function createPDF(reportData, graphs) {
         .rect(25 + leftColWidth + rightColWidth / 2, footerY + 50, rightColWidth / 2, 25)
         .stroke();
 
-      // Position Held text
+      // Position Held text - VERTICALLY CENTERED
+      const positionTextHeight = 9;
+      const positionVerticalPadding = (25 - positionTextHeight) / 2;
+      
       doc.fontSize(9).font('Helvetica')
         .fillColor('#000000')
         .text('Position Held:',
-          30 + leftColWidth, footerY + 58, {
+          30 + leftColWidth, footerY + 50 + positionVerticalPadding, {
           width: rightColWidth / 2 - 10,
           ellipsis: true
         });
@@ -642,7 +710,7 @@ async function createPDF(reportData, graphs) {
       doc.fontSize(9).font('Helvetica')
         .fillColor('#000000')
         .text('Senior Technician',
-          30 + leftColWidth + rightColWidth / 2, footerY + 58, {
+          30 + leftColWidth + rightColWidth / 2, footerY + 50 + positionVerticalPadding, {
           width: rightColWidth / 2 - 10,
           align: 'center',
           ellipsis: true
@@ -667,11 +735,14 @@ async function createPDF(reportData, graphs) {
         .rect(25 + leftColWidth + rightColWidth / 2, footerY + 75, rightColWidth / 2, 25)
         .stroke();
 
-      // Signature text
+      // Signature text - VERTICALLY CENTERED
+      const signatureTextHeight = 9;
+      const signatureVerticalPadding = (25 - signatureTextHeight) / 2;
+      
       doc.fontSize(9).font('Helvetica')
         .fillColor('#000000')
         .text('Signature:',
-          30 + leftColWidth, footerY + 83, {
+          30 + leftColWidth, footerY + 75 + signatureVerticalPadding, {
           width: rightColWidth / 2 - 10,
           ellipsis: true
         });
@@ -688,10 +759,13 @@ async function createPDF(reportData, graphs) {
         .rect(25, footerY + 100, leftColWidth, 25)
         .stroke();
 
-      // Remarks header text
+      // Remarks header text - VERTICALLY CENTERED
+      const remarksTextHeight = 9;
+      const remarksVerticalPadding = (25 - remarksTextHeight) / 2;
+      
       doc.fontSize(9).font('Helvetica-Bold')
         .fillColor('#000000')
-        .text('Remarks', 30, footerY + 108);
+        .text('Remarks', 30, footerY + 100 + remarksVerticalPadding);
 
       // Date Reported row
       doc.rect(25 + leftColWidth, footerY + 100, rightColWidth / 2, 25)
@@ -712,11 +786,14 @@ async function createPDF(reportData, graphs) {
         .rect(25 + leftColWidth + rightColWidth / 2, footerY + 100, rightColWidth / 2, 25)
         .stroke();
 
-      // Date Reported text
+      // Date Reported text - VERTICALLY CENTERED
+      const dateTextHeight = 9;
+      const dateVerticalPadding = (25 - dateTextHeight) / 2;
+      
       doc.fontSize(9).font('Helvetica')
         .fillColor('#000000')
         .text('Date Reported:',
-          30 + leftColWidth, footerY + 108, {
+          30 + leftColWidth, footerY + 100 + dateVerticalPadding, {
           width: rightColWidth / 2 - 10,
           ellipsis: true
         });
@@ -727,7 +804,7 @@ async function createPDF(reportData, graphs) {
       doc.fontSize(9).font('Helvetica')
         .fillColor('#000000')
         .text(reportDate,
-          30 + leftColWidth + rightColWidth / 2, footerY + 108, {
+          30 + leftColWidth + rightColWidth / 2, footerY + 100 + dateVerticalPadding, {
           width: rightColWidth / 2 - 10,
           align: 'center',
           ellipsis: true
@@ -762,11 +839,14 @@ async function createPDF(reportData, graphs) {
         .rect(25 + leftColWidth + rightColWidth / 2, footerY + 125, rightColWidth / 2, 25)
         .stroke();
 
-      // Report Issue No text
+      // Report Issue No text - VERTICALLY CENTERED
+      const issueTextHeight = 9;
+      const issueVerticalPadding = (25 - issueTextHeight) / 2;
+      
       doc.fontSize(9).font('Helvetica')
         .fillColor('#000000')
         .text('Report Issue No:',
-          30 + leftColWidth, footerY + 133, {
+          30 + leftColWidth, footerY + 125 + issueVerticalPadding, {
           width: rightColWidth / 2 - 10,
           ellipsis: true
         });
@@ -774,7 +854,7 @@ async function createPDF(reportData, graphs) {
       doc.fontSize(9).font('Helvetica')
         .fillColor('#000000')
         .text('001',
-          30 + leftColWidth + rightColWidth / 2, footerY + 133, {
+          30 + leftColWidth + rightColWidth / 2, footerY + 125 + issueVerticalPadding, {
           width: rightColWidth / 2 - 10,
           align: 'center',
           ellipsis: true
@@ -789,12 +869,15 @@ async function createPDF(reportData, graphs) {
         .fillColor('#000000')
         .text('1', 32, footerY + 134);
 
-      // Remark 1 text - FIXED: reduced font size and improved layout
+      // Remark 1 text - VERTICALLY CENTERED
+      const remark1TextHeight = 8;
+      const remark1VerticalPadding = (25 - remark1TextHeight) / 2;
+      
       doc.fontSize(8)
         .font('Helvetica')
         .fillColor('#000000')
         .text('Test results reported only relate to the item(s) tested and apply to the sample as received.',
-          45, footerY + 133, {
+          45, footerY + 125 + remark1VerticalPadding, {
           width: leftColWidth - 50,
           ellipsis: false,
           lineBreak: true,
@@ -830,23 +913,30 @@ async function createPDF(reportData, graphs) {
         .fillColor('#000000')
         .text('2', 32, footerY + 159);
 
-      // Remark 2 text
-      doc.fontSize(8).font('Helvetica')
+      // Remark 2 text - VERTICALLY CENTERED
+      const remark2TextHeight = 8;
+      const remark2VerticalPadding = (25 - remark2TextHeight) / 2;
+      
+      doc.fontSize(8)
+        .font('Helvetica')
         .fillColor('#000000')
         .text('This report shall not be reproduced, except in full, without approval of the Laboratory.',
-          45, footerY + 158, {
+          45, footerY + 150 + remark2VerticalPadding, {
           width: leftColWidth - 50,
           ellipsis: false,
           lineBreak: true,
           height: 25
         });
 
-      // Company address text - FIXED: reduced font size and improved layout
+      // Company address text - VERTICALLY CENTERED
+      const addressTextHeight = 7;
+      const addressVerticalPadding = (25 - addressTextHeight) / 2;
+      
       doc.fontSize(7)
         .font('Helvetica')
         .fillColor('#000000')
         .text('AMTEST UK LTD Unit A 2D/6 Project Park, North Crescent, Canning Town E16 4TQ',
-          30 + leftColWidth, footerY + 155, {
+          30 + leftColWidth, footerY + 150 + addressVerticalPadding, {
           width: rightColWidth - 15,
           ellipsis: false,
           lineBreak: true,
