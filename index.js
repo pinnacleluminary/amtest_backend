@@ -28,7 +28,7 @@ try {
   } else {
     console.warn('Warning: Helvetica.ttf not found at:', fontPath);
   }
-  
+
   if (fs.existsSync(fontBoldPath)) {
     registerFont(fontBoldPath, { family: 'Helvetica', weight: 'bold' });
     console.log('Successfully registered Helvetica-Bold font for charts');
@@ -126,22 +126,73 @@ async function generateGraphs(graphData) {
       // Determine which font to use
       const fontFamily = fs.existsSync(fontPath) ? 'Helvetica' : 'Arial, Helvetica, sans-serif';
       
+      // Set chart type based on test type if not specified
+      let chartType = graph.type || 'line';
+      
+      // Special handling for specific test types
+      if (graph.title && graph.title.toLowerCase().includes('particle size distribution')) {
+        chartType = 'line';
+      } else if (graph.title && graph.title.toLowerCase().includes('constituents')) {
+        chartType = 'pie';
+      } else if (graph.title && (
+        graph.title.toLowerCase().includes('strength') || 
+        graph.title.toLowerCase().includes('comparison')
+      )) {
+        chartType = 'bar';
+      }
+      
       // Generate chart configuration with Helvetica font
       const configuration = {
-        type: graph.type || 'line',
+        type: chartType,
         data: {
           labels: graph.labels,
-          datasets: graph.datasets.map(dataset => ({
-            label: dataset.label,
-            data: dataset.data,
-            backgroundColor: dataset.backgroundColor || 'rgba(54, 162, 235, 0.2)',
-            borderColor: dataset.borderColor || 'rgba(54, 162, 235, 1)',
-            borderWidth: dataset.borderWidth || 1,
-            pointBackgroundColor: dataset.pointBackgroundColor || 'rgba(54, 162, 235, 1)',
-            pointBorderColor: dataset.pointBorderColor || '#fff',
-            pointRadius: dataset.pointRadius || 4,
-            fill: dataset.fill !== undefined ? dataset.fill : false
-          }))
+          datasets: graph.datasets.map(dataset => {
+            // Base dataset configuration
+            const datasetConfig = {
+              label: dataset.label,
+              data: dataset.data,
+              borderWidth: dataset.borderWidth || 1,
+              fill: dataset.fill !== undefined ? dataset.fill : false
+            };
+            
+            // Add type-specific styling
+            if (chartType === 'line') {
+              datasetConfig.backgroundColor = dataset.backgroundColor || 'rgba(54, 162, 235, 0.2)';
+              datasetConfig.borderColor = dataset.borderColor || 'rgba(54, 162, 235, 1)';
+              datasetConfig.pointBackgroundColor = dataset.pointBackgroundColor || 'rgba(54, 162, 235, 1)';
+              datasetConfig.pointBorderColor = dataset.pointBorderColor || '#fff';
+              datasetConfig.pointRadius = dataset.pointRadius || 4;
+              datasetConfig.tension = 0.4;
+            } else if (chartType === 'bar') {
+              datasetConfig.backgroundColor = dataset.backgroundColor || 'rgba(54, 162, 235, 0.7)';
+              datasetConfig.borderColor = dataset.borderColor || 'rgba(54, 162, 235, 1)';
+              datasetConfig.borderWidth = dataset.borderWidth || 1;
+            } else if (chartType === 'pie') {
+              // For pie charts, we need an array of colors
+              const defaultColors = [
+                'rgba(54, 162, 235, 0.7)',
+                'rgba(255, 99, 132, 0.7)',
+                'rgba(255, 206, 86, 0.7)',
+                'rgba(75, 192, 192, 0.7)',
+                'rgba(153, 102, 255, 0.7)',
+                'rgba(255, 159, 64, 0.7)',
+                'rgba(199, 199, 199, 0.7)',
+                'rgba(83, 102, 255, 0.7)',
+                'rgba(40, 159, 64, 0.7)',
+                'rgba(210, 199, 199, 0.7)'
+              ];
+              
+              datasetConfig.backgroundColor = dataset.backgroundColor || defaultColors;
+              datasetConfig.borderColor = dataset.borderColor || '#fff';
+              datasetConfig.borderWidth = dataset.borderWidth || 1;
+            } else if (chartType === 'scatter') {
+              datasetConfig.backgroundColor = dataset.backgroundColor || 'rgba(54, 162, 235, 0.7)';
+              datasetConfig.borderColor = dataset.borderColor || 'rgba(54, 162, 235, 1)';
+              datasetConfig.pointRadius = dataset.pointRadius || 5;
+            }
+            
+            return datasetConfig;
+          })
         },
         options: {
           responsive: true,
@@ -178,7 +229,7 @@ async function generateGraphs(graphData) {
               display: false // Disable data labels by default
             }
           },
-          scales: {
+          scales: chartType !== 'pie' ? {
             x: {
               title: {
                 display: true,
@@ -230,7 +281,7 @@ async function generateGraphs(graphData) {
               },
               beginAtZero: graph.beginAtZero !== undefined ? graph.beginAtZero : true
             }
-          },
+          } : {}, // No scales for pie charts
           layout: {
             padding: {
               left: 15,
@@ -346,31 +397,28 @@ async function createPDF(reportData, graphs) {
 
       // Document properties
       const pageWidth = doc.page.width;
-      const contentWidth = pageWidth - 50; // Content width accounting for margins
+      const contentWidth = pageWidth - 50;
       const pageHeight = doc.page.height;
 
-      const topPadding = 15; // Additional padding at the top
-      let current_Y = 20 + topPadding; // Start Y position with extra padding
+      // HEADER SECTION
+      const topPadding = 15;
+      let currentY = 20 + topPadding;
 
-      // HEADER SECTION - Replace text with logo image
-      // Load the logo image from assets folder
+      // Add logo
       const logoPath = path.join(__dirname, './assets/logo.png');
-
-      // Add logo image instead of text
-      doc.image(logoPath, 25, current_Y, {
-        width: 80, // Adjust width as needed to fit your logo
-        height: 30 // Adjust height as needed to fit your logo
+      doc.image(logoPath, 25, currentY, {
+        width: 80,
+        height: 30
       });
 
       // Get title from test data
       const testTitle = reportData.testInfo?.testType || 'Material Test Report';
-
       const centerX = pageWidth / 2;
 
-      // Report title - centered like in the example and made BOLD
+      // Report title - centered and bold
       doc.fontSize(12).font('Helvetica-Bold')
         .fillColor('#333333')
-        .text(testTitle, centerX - 150, current_Y, {
+        .text(testTitle, centerX - 150, currentY, {
           width: 300,
           align: 'center'
         });
@@ -384,14 +432,22 @@ async function createPDF(reportData, graphs) {
 
       doc.fontSize(10).font('Helvetica')
         .fillColor('#333333')
-        .text(currentDate, pageWidth - 100, current_Y, {
+        .text(currentDate, pageWidth - 100, currentY, {
           align: 'right'
         });
 
-      let currentY = 75;
+      currentY = 75;
 
-      // SIMPLIFY ALL TEST INFO AND CALCULATED PROPERTIES
-      // Convert any complex values to simple strings
+      // Format property name from camelCase to title case
+      const formatPropertyName = (key) => {
+        return key
+          .replace(/([A-Z])/g, ' $1')
+          .replace(/^./, str => str.toUpperCase())
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
+
+      // Simplify values for display
       const simplifyValue = (value) => {
         if (value === null || value === undefined) return '';
         if (typeof value !== 'object') return String(value);
@@ -404,35 +460,30 @@ async function createPDF(reportData, graphs) {
         return String(value);
       };
 
-      // Format property name from camelCase to title case
-      const formatPropertyName = (key) => {
-        // Handle special cases like "testType" -> "Test Type"
-        return key
-          .replace(/([A-Z])/g, ' $1') // Insert space before capital letters
-          .replace(/^./, str => str.toUpperCase())
-          .replace(/\s+/g, ' ')
-          .trim();
-      };
-
       // Simplify all test info
       const simplifiedTestInfo = {};
       if (reportData.testInfo) {
         Object.entries(reportData.testInfo).forEach(([key, value]) => {
-          // Use formatted property name as the key
-          simplifiedTestInfo[formatPropertyName(key)] = simplifyValue(value);
+          // Skip arrays since we don't want to display them
+          if (!Array.isArray(value)) {
+            simplifiedTestInfo[formatPropertyName(key)] = simplifyValue(value);
+          }
         });
       }
 
       // Simplify all calculated properties
       const simplifiedProperties = {};
+      
       if (reportData.calculatedProperties) {
         Object.entries(reportData.calculatedProperties).forEach(([key, value]) => {
-          // Use formatted property name as the key
-          simplifiedProperties[formatPropertyName(key)] = simplifyValue(value);
+          // Skip arrays since we don't want to display them
+          if (!Array.isArray(value)) {
+            simplifiedProperties[formatPropertyName(key)] = simplifyValue(value);
+          }
         });
       }
 
-      // TEST INFORMATION TABLE - Smaller text but showing all info
+      // TEST INFORMATION TABLE
       if (Object.keys(simplifiedTestInfo).length > 0) {
         // Section title with light blue background
         doc.rect(25, currentY, contentWidth, 20)
@@ -454,8 +505,6 @@ async function createPDF(reportData, graphs) {
         const testInfoKeys = Object.keys(simplifiedTestInfo);
         const columns = 2;
         const rows = Math.ceil(testInfoKeys.length / columns);
-
-        // Calculate row height based on available space
         const rowHeight = 15;
 
         for (let i = 0; i < rows; i++) {
@@ -490,7 +539,7 @@ async function createPDF(reportData, graphs) {
                   align: 'left'
                 });
 
-              // Draw value with smaller font and text truncation for long values - vertically centered
+              // Draw value with smaller font
               doc.fontSize(7)
                 .font('Helvetica')
                 .fillColor('#333333')
@@ -508,7 +557,7 @@ async function createPDF(reportData, graphs) {
 
       currentY += 20;
 
-      // NEW LAYOUT: "Test Result" header with underline
+      // TEST RESULT SECTION
       doc.fontSize(12).font('Helvetica-Bold')
         .fillColor('#000000')
         .text('Test Result', 25, currentY);
@@ -521,12 +570,10 @@ async function createPDF(reportData, graphs) {
 
       currentY += 25;
 
-      // Calculate dimensions for the two boxes (graph and calculated properties)
-      const boxHeight = 300; // Fixed height for both boxes
-
-      // Use the same ratio as the footer section (70% vs 30%)
-      const leftBoxWidth = contentWidth * 0.7; // 70% for graph (same as Comments section)
-      const rightBoxWidth = contentWidth * 0.3; // 30% for calculated properties (same as AMTEST UK section)
+      // Calculate dimensions for the boxes - always use 70/30 split
+      const boxHeight = 300;
+      const leftBoxWidth = contentWidth * 0.7;
+      const rightBoxWidth = contentWidth * 0.3;
 
       // LEFT BOX - Graph
       doc.rect(25, currentY, leftBoxWidth, boxHeight)
@@ -542,9 +589,8 @@ async function createPDF(reportData, graphs) {
 
       // Add graph to left box if available
       if (graphs && graphs.length > 0) {
-        const graph = graphs[0]; // Use only the first graph
+        const graph = graphs[0];
 
-        // Calculate padding and dimensions to fit graph inside the box
         const graphPadding = 10;
         const graphWidth = leftBoxWidth - (graphPadding * 2);
         const graphHeight = boxHeight - (graphPadding * 2);
@@ -558,7 +604,6 @@ async function createPDF(reportData, graphs) {
           y: currentY + graphPadding
         });
 
-        // Optional: Add graph title at the bottom of the box
         if (graph.title) {
           doc.fontSize(9).font('Helvetica')
             .fillColor('#000000')
@@ -570,7 +615,6 @@ async function createPDF(reportData, graphs) {
             });
         }
       } else {
-        // If no graph available, add text "Graph Data"
         doc.fontSize(16).font('Helvetica')
           .fillColor('#000000')
           .text('Graph Data',
@@ -591,24 +635,21 @@ async function createPDF(reportData, graphs) {
 
       // Add calculated properties to right box in Excel-like table format
       if (Object.keys(simplifiedProperties).length > 0) {
-        // Calculate table dimensions
         const tableStartY = currentY + 40;
-        const tableWidth = rightBoxWidth - 20; // 10px padding on each side
+        const tableWidth = rightBoxWidth - 20;
         const tableX = 25 + leftBoxWidth + 10;
 
         // Limit to max 6 properties
         const propertyEntries = Object.entries(simplifiedProperties).slice(0, 6);
         const propertyCount = propertyEntries.length;
-        
-        // Increase minimum row height to prevent text overlap
+
         const minRowHeight = 25;
-        const availableHeight = boxHeight - 50; // Account for header
-        // Ensure rows are tall enough for text
+        const availableHeight = boxHeight - 50;
         const rowHeight = Math.max(minRowHeight, Math.min(30, availableHeight / (propertyCount + 1)));
 
         // Draw table header row
         doc.rect(tableX, tableStartY, tableWidth, rowHeight)
-          .fillColor('#e6e6e6') // Light gray background for header
+          .fillColor('#e6e6e6')
           .fill();
 
         doc.strokeColor('#000000')
@@ -669,8 +710,7 @@ async function createPDF(reportData, graphs) {
             .lineWidth(0.5)
             .stroke();
 
-          // Calculate text height to center vertically
-          const textHeight = 7; // Font size
+          const textHeight = 7;
           const verticalPadding = (rowHeight - textHeight) / 2;
 
           // Draw property name with vertical centering
@@ -702,7 +742,7 @@ async function createPDF(reportData, graphs) {
           rowY += rowHeight;
         });
       } else {
-        // If no properties available, add placeholder text
+        // If no properties available
         doc.fontSize(16).font('Helvetica')
           .fillColor('#000000')
           .text('Calculated\nproperties\npart',
@@ -716,8 +756,7 @@ async function createPDF(reportData, graphs) {
       currentY += boxHeight + 20;
 
       // FOOTER SECTION - Positioned at the bottom of the page
-      // Calculate footer Y position to ensure it's at the bottom
-      const footerY = pageHeight - 225 - 20; // 20px from bottom margin
+      const footerY = pageHeight - 225 - 20;
 
       // Define the footer table structure
       const leftColWidth = contentWidth * 0.7;
@@ -756,7 +795,6 @@ async function createPDF(reportData, graphs) {
           align: 'left'
         });
 
-
       // For and on behalf of AMTEST UK header text - with vertical centering
       doc.fontSize(9).font('Helvetica')
         .fillColor('#000000')
@@ -777,6 +815,17 @@ async function createPDF(reportData, graphs) {
         .rect(25, footerY + 25, leftColWidth, 75)
         .stroke();
 
+      // Add analysis text if available
+      if (reportData.analysis) {
+        doc.fontSize(8).font('Helvetica')
+          .fillColor('#000000')
+          .text(reportData.analysis,
+            30, footerY + 30, {
+            width: leftColWidth - 10,
+            align: 'left'
+          });
+      }
+
       // Approved by row
       doc.rect(25 + leftColWidth, footerY + 25, rightColWidth / 2, 25)
         .fillColor('#ffffff')
@@ -787,7 +836,7 @@ async function createPDF(reportData, graphs) {
         .rect(25 + leftColWidth, footerY + 25, rightColWidth / 2, 25)
         .stroke();
 
-        doc.rect(25 + leftColWidth + rightColWidth / 2, footerY + 25, rightColWidth / 2, 25)
+      doc.rect(25 + leftColWidth + rightColWidth / 2, footerY + 25, rightColWidth / 2, 25)
         .fillColor('#ffffff')
         .fill();
 
@@ -879,8 +928,6 @@ async function createPDF(reportData, graphs) {
           ellipsis: true
         });
 
-      // No signature as requested
-
       // Remarks header
       doc.rect(25, footerY + 100, leftColWidth, 25)
         .fillColor('#ffffff')
@@ -924,8 +971,11 @@ async function createPDF(reportData, graphs) {
           ellipsis: true
         });
 
-      // Use fixed date "10.03.2025" as shown in the example
-      const reportDate = "10.03.2025";
+      const reportDate = new Date().toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      }).replace(/\//g, '.');
 
       doc.fontSize(9).font('Helvetica')
         .fillColor('#000000')
@@ -936,7 +986,7 @@ async function createPDF(reportData, graphs) {
           ellipsis: true
         });
 
-      // Remark 1 row
+      // Remark 1 row (continued)
       doc.rect(25, footerY + 125, leftColWidth, 25)
         .fillColor('#ffffff')
         .fill();
@@ -1075,6 +1125,7 @@ async function createPDF(reportData, graphs) {
   });
 }
 
+
 // Image parser endpoint (modified to generate PDF with graphs)
 app.post('/api/imageparser', async (req, res) => {
   try {
@@ -1093,10 +1144,14 @@ Return a JSON object with the following structure:
     // Include ALL test information fields found in the data
     // Format keys in camelCase (e.g., "testType", "sampleId")
     // IMPORTANT: All values MUST be simple strings or numbers, NOT objects or arrays
+    // EXCEPTION: If the data contains a table of values that should be displayed as a table in the report,
+    // you may include it as an array with key name ending with "Table" or "Data" (e.g., "testResultsTable")
   },
   "analyzedData": {
     // Raw data points extracted from the HTML table
     // IMPORTANT: All values MUST be simple strings or numbers, NOT objects or arrays
+    // EXCEPTION: If the data contains a table of values that should be displayed as a table in the report,
+    // you may include it as an array with key name ending with "Table" or "Data" (e.g., "testResultsTable")
   },
   "calculatedProperties": {
     // IMPORTANT: Include only the 6 MOST IMPORTANT properties
@@ -1104,6 +1159,8 @@ Return a JSON object with the following structure:
     // IMPORTANT: All values MUST be simple strings or numbers, NOT objects or arrays
     // For example: "youngModulus": "210.5 GPa" (not an object or array)
     // If a value would normally be complex, convert it to a simple string representation
+    // EXCEPTION: If the test type requires displaying tabular data (like particle size distribution),
+    // you may include an array with appropriate name (e.g., "particleSizeData", "testResults")
   },
   "graphData": [
     // Array of graph specifications - include ALL relevant graphs
@@ -1124,17 +1181,151 @@ Return a JSON object with the following structure:
       ]
     }
   ],
-  "analysis": "Very brief analysis of the test results (50-100 words maximum)"
+  "analysis": "Brief analysis of the test results (50-100 words maximum)"
 }
+
+IMPORTANT INSTRUCTIONS FOR SPECIFIC TEST TYPES: (Sample Fields of Calculated Properties: So please generate the calculated Properties fields according to the test type like in the below conditions.)
+
+- Determination of water content - soils
+Water Content (%)
+Material Description: 
+Lower Limit: 
+Upper Limit: 
+
+- Particle size distribution : Soils
+Sieve Size, Passing (Array)
+
+- Determination of particle density - gas jar method
+Particle Density(Mg/m3):
+Material Description:
+
+- Liquid and plastic limits: soils
+Water Contnt as Received (W)(%)
+Corrected Liquid Limit (WL)(%)
+Liquid Limit (%)
+Plastic Limit (WP)(%)
+Plasticity Index (IP)(%)
+Liquid Limit Index (IL) (%)
+Consistency Index (IC) (%)
+%Passing 425um BS Test Sieve (%)
+Cone Used (g/deg)
+Correlation Factor
+
+Test Reading
+Avg. Penetration
+Water Content
+
+- Rammer/Hammer Maximum Dry Density/Water Content Relationship
+Grading Zone
+Maximum Dry Density
+Optimum Water Content
+Dry Mass retained on 20 mm Test Sieve
+Dry Mass retained on 37.5 mm Test
+Measured Particle Density
+Assumed Particle Density
+
+Array of (Compaction Point No., Water Content %, Dry Density(Mg/m3))
+
+- Moisture Condition Value
+Moisture Condition Value
+Natural Water Content (%)
+Percentage Retained on 20mm Sieve (%)
+Interpretation of Curve
+Preparation Method
+
+- Water Content Relation
+Array (Test No, MCV, Water Content)
+Percentage Retained on 20mm Sieve (%)
+
+- Determination of california Bearing ratio
+Test Result-Top (Load on Plunger @ 2.5mm Penetration, CBR Value @ 2.5mm Penetration, Load on Plunger @ 5.0 mm Penetration, CBR Value @ 5.0mm Penetration, Top Part Water Content
+CBR Value for Top Part)
+
+Test Result-Base (Load on Plunger @ 2.5mm Penetration, CBR Value @ 2.5mm Penetration, Load on Plunger @ 5.0 mm Penetration, CBR Value @ 5.0mm Penetration, Top Part Water Content
+CBR Value for Top Part)
+
+- Determination of Water Content of Aggregates
+Water Content (%)
+Material Description
+Lower Limit
+Upper Limit
+
+- Determination of Geometrical Properties of Aggregates (Constituent Classification)
+Test Drying Temperature
+Floating Particles
+Cohesive, Gypsum, Floating Wood, Plastic & Rubber
+Concrete: Concrete Products, Mortar & Concrete, Masonry Units
+Unbound Aggregate: Natural Stone, & Hydraulically Bound Aggregate
+Clay Masonry Units: Calcium Silicate Masonry Units, Aerated non-Floating Concrete
+Bituminous Materials
+Glass
+
+- Determinatin of In-Situ Shear Value - Hand Shear Vane Method
+The same data as the test data
+
+- Aggregate Particles between X mm and Y mm
+Mass of Dry Sample Tested
+Particle Density (prd)
+Particle Density(pssd)
+Apparent Particle Density (Pa)
+Water Absorption (Wa)
+
+- Los Angeles Abrasion - Standard Method
+The Los Angeles Coefficient (LA)
+Upper Aggregate Size (mm)
+Lower Aggregate Size (mm)
+
+- Concrete Core Compressive Strength
+Date Tested
+Age at Test
+Diameter/Length Ratio oof Prepared Core
+Surface Moisture Condition at Test
+Density (kg/m3)
+Failure Type
+Core Compressive Strength (to nearest 0.1 MPa(N/mm2))
+Any deviations from the standard of examination or compression testing
+Tested By
+
+- Concrete Cube Compressive Strenth
+The same data as the test specimen details
+
+- Determination of Chloride Migration Coefficient
+Comparison of Specimens of the following fields
+1. Measured Specimen Thichness (mm)
+2. Measured Chloride Pnetration (mm)
+3. Mean Chloride Migration Coefficient
+4. Variation of Chloride Migration Coefficient
+Comments on Testing
+
+- Plate Bearing Load Test (CBR)
+Maximum Applied Pressure
+Maximum Deformation
+Pressure at 1.25mm Settlement
+K Value
+Modulus of Subgrade Reaction
+Corrected Modulus of Subgrade Reaction:
+Approximate CBR value (%)
+
+- Estimation of CBR by Dynamic Cone Penetrometer Method
+Depth from (mm)
+Depth to (mm)
+No. of Blows
+Blow Rate (mm/Blow)
+Estimated CBR (%)
+
+- Concrete Pour Record - Slump Test / Flow Table Test, Air Content & Density
+The same data as the test data
+
+
+NOTE: IT IS VERY IMPORTANT: We should check the test title carefully and please choose the correct instruction and generate the correct test result. And please avoid generating the same test data except for the conditions in the instructions.
 
 Make sure to:
 1. Extract ALL test information fields found in the data
 2. ALL values in testInfo and calculatedProperties MUST be simple strings or numbers, NOT objects or arrays
+   EXCEPTION: You may include array data for tables that should be displayed in the report
 3. Include ONLY the 6 MOST IMPORTANT calculated properties
 4. Include ALL relevant graphs that would visualize the test results
-5. Keep the analysis very brief to fit on a single-page report
-
-IMPORTANT: DO NOT return complex objects or arrays as values in testInfo or calculatedProperties. Convert any complex values to simple string representations.`,
+5. Keep the analysis very brief to fit on a single-page report`,
       messages: [
         {
           role: "user",
@@ -1177,38 +1368,6 @@ IMPORTANT: DO NOT return complex objects or arrays as values in testInfo or calc
       reportData: reportData
     });
 
-  } catch (error) {
-    console.log(error);
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Excel Analysis endpoint
-app.post('/api/excelAnalysis', async (req, res) => {
-  try {
-    const { excelFile, filename, sheetName } = req.body;
-
-    const msg = await anthropic.messages.create({
-      model: "claude-3-7-sonnet-20250219",
-      max_tokens: 1000,
-      temperature: 1,
-      system: "Analyze that htmlContent script and make the data into JSON Format. With this Material Test data, I need to write Test Report. I need to make it as excel grid format in html. Please give me whole code of html of this test report. Not only the data in the content file, but also the values that extracted from the data in the content file using the formulation calculations.",
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: "Analyze that htmlContent script and make the data into JSON Format. With this Material Test data, I need to write Test Report. I need to make it as excel grid format in html. Please give me whole code of html of this test report. Not only the data in the content file, but also the values that extracted from the data in the content file using the formulation calculations." + htmlContent
-            }
-          ]
-        }
-      ]
-    });
-    console.log("msg:::: ", msg);
-
-    // Send response
-    res.json({ msg: msg.content });
   } catch (error) {
     console.log(error);
     res.status(400).json({ error: error.message });
@@ -1271,7 +1430,7 @@ setInterval(() => {
       });
     });
   });
-}, 3600000); // Run every hour
+}, 3600000);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
