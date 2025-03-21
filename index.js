@@ -400,43 +400,105 @@ async function createPDF(reportData, graphs) {
       const contentWidth = pageWidth - 50;
       const pageHeight = doc.page.height;
 
-      // HEADER SECTION
-      const topPadding = 15;
-      let currentY = 20 + topPadding;
-
-      // Add logo
-      const logoPath = path.join(__dirname, './assets/logo.png');
-      doc.image(logoPath, 25, currentY, {
-        width: 80,
-        height: 30
-      });
+      // ----- HEADER SECTION -----
+      let currentY = 20;
 
       // Get title from test data
       const testTitle = reportData.testInfo?.testType || 'Material Test Report';
-      const centerX = pageWidth / 2;
+      const testSubtitle = reportData.testInfo?.testSubtype || '';
 
-      // Report title - centered and bold
-      doc.fontSize(12).font('Helvetica-Bold')
-        .fillColor('#333333')
-        .text(testTitle, centerX - 150, currentY, {
-          width: 300,
-          align: 'center'
-        });
+      // Calculate company info width based on the longest text line
+      const companyInfoWidth = 180; // Fixed width for company info
+      
+      // Calculate logo dimensions to match company info width
+      const logoWidth = companyInfoWidth;
+      const logoHeight = 60; // Maintain aspect ratio
+      const logoX = pageWidth - logoWidth - 25;
+      const logoY = currentY;
 
-      // Add current date in header - right aligned
-      const currentDate = new Date().toLocaleDateString('en-GB', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
+      // Add logo on the right side - resized to match company info width
+      const logoPath = path.join(__dirname, './assets/logo.png');
+      doc.image(logoPath, logoX, logoY, {
+        width: logoWidth,
+        height: logoHeight
       });
 
-      doc.fontSize(10).font('Helvetica')
-        .fillColor('#333333')
-        .text(currentDate, pageWidth - 100, currentY, {
-          align: 'right'
+      // Report title - left aligned
+      doc.fontSize(12).font('Helvetica-Bold')
+        .fillColor('#000000')
+        .text('Test Report:', 25, currentY);
+      
+      currentY += 20;
+      
+      // Main title in blue - allow it to wrap if needed
+      doc.fontSize(14).font('Helvetica-Bold')
+        .fillColor('#3498db') // Blue color for main title
+        .text(testTitle + (testSubtitle ? ': ' + testSubtitle : ''), 25, currentY, {
+          width: pageWidth - logoWidth - 50, // Ensure it doesn't overlap with logo
+          align: 'left'
+        });
+      
+      // Calculate the height of the title text
+      const titleHeight = doc.heightOfString(testTitle + (testSubtitle ? ': ' + testSubtitle : ''), {
+        width: pageWidth - logoWidth - 50,
+        align: 'left'
+      });
+      
+      // Add company address below logo
+      const addressY = logoY + logoHeight + 5;
+      doc.fontSize(9).font('Helvetica')
+        .fillColor('#000000')
+        .text('Amtest UK, Unit A 2D/6, Project Park,', logoX, addressY, {
+          width: companyInfoWidth,
+          align: 'left'
+        });
+      
+      doc.fontSize(9).font('Helvetica')
+        .fillColor('#000000')
+        .text('North Crescent, London E16 4TQ', logoX, addressY + 12, {
+          width: companyInfoWidth,
+          align: 'left'
+        });
+      
+      doc.fontSize(9).font('Helvetica')
+        .fillColor('#000000')
+        .text('Tel: 020 8090 1199', logoX, addressY + 24, {
+          width: companyInfoWidth,
+          align: 'left'
+        });
+      
+      doc.fontSize(9).font('Helvetica')
+        .fillColor('#000000')
+        .text('Email: enquiries@amtest.uk', logoX, addressY + 36, {
+          width: companyInfoWidth,
+          align: 'left'
+        });
+      
+      // Report number on a separate line below company info
+      const reportNo = reportData.testInfo?.reportNo || 'INTLTP-10';
+      const reportIssueNo = reportData.testInfo?.reportIssueNo || '01';
+      
+      const reportInfoY = addressY + 48;
+      doc.fontSize(9).font('Helvetica')
+        .fillColor('#000000')
+        .text(`No.: ${reportNo} | Issue No.: ${reportIssueNo}`, logoX, reportInfoY, {
+          width: companyInfoWidth,
+          align: 'left'
         });
 
-      currentY = 75;
+      // Update currentY to be below both the title and company info
+      currentY = Math.max(
+        currentY + titleHeight + 20,
+        reportInfoY + 20
+      );
+
+      // ----- PROJECT DETAILS SECTION -----
+      // Section header with blue text
+      doc.fontSize(11).font('Helvetica-Bold')
+        .fillColor('#3498db') // Blue color for section header
+        .text('Project Details', 25, currentY);
+
+      currentY += 20;
 
       // Format property name from camelCase to title case
       const formatPropertyName = (key) => {
@@ -447,665 +509,459 @@ async function createPDF(reportData, graphs) {
           .trim();
       };
 
-      // Simplify values for display
-      const simplifyValue = (value) => {
-        if (value === null || value === undefined) return '';
-        if (typeof value !== 'object') return String(value);
-        if (Array.isArray(value)) return value.map(v => typeof v === 'object' ? JSON.stringify(v) : String(v)).join(', ');
-        if (typeof value === 'object') {
-          if (value.value !== undefined) return String(value.value);
-          if (Object.keys(value).length === 0) return '';
-          return JSON.stringify(value);
-        }
-        return String(value);
-      };
-
-      // Simplify all test info
-      const simplifiedTestInfo = {};
+      // Project details fields
+      const projectDetailsFields = [];
+      
       if (reportData.testInfo) {
         Object.entries(reportData.testInfo).forEach(([key, value]) => {
-          // Skip arrays since we don't want to display them
-          if (!Array.isArray(value)) {
-            simplifiedTestInfo[formatPropertyName(key)] = simplifyValue(value);
+          // Check if this is a project detail field
+          if (key.toLowerCase().includes('project') || 
+              key.toLowerCase().includes('document') ||
+              key.toLowerCase().includes('job') ||
+              key.toLowerCase().includes('client') ||
+              key.toLowerCase().includes('site') ||
+              key.toLowerCase().includes('test location') ||
+              key.toLowerCase().includes('dcp reference') ||
+              key.toLowerCase().includes('core')) {
+            
+            const formattedKey = formatPropertyName(key) + ':';
+            const formattedValue = value !== null && value !== undefined ? String(value) : '-';
+            
+            projectDetailsFields.push({ key: formattedKey, value: formattedValue });
           }
         });
       }
-
-      // Simplify all calculated properties
-      const simplifiedProperties = {};
       
-      if (reportData.calculatedProperties) {
-        Object.entries(reportData.calculatedProperties).forEach(([key, value]) => {
-          // Skip arrays since we don't want to display them
-          if (!Array.isArray(value)) {
-            simplifiedProperties[formatPropertyName(key)] = simplifyValue(value);
-          }
-        });
+      // If no project details were found, add placeholders
+      if (projectDetailsFields.length === 0) {
+        projectDetailsFields.push({ key: 'Document Number:', value: 'AMT-SITE-S-WS-004' });
+        projectDetailsFields.push({ key: 'Client:', value: 'AD BM' });
+        projectDetailsFields.push({ key: 'Document Reference:', value: 'STP02 & STP03' });
+        projectDetailsFields.push({ key: 'Job Number:', value: 'ADBS-0035' });
+        projectDetailsFields.push({ key: 'Test Location 1:', value: 'Beverley Road, Highnam Test Location Chainage' });
+        projectDetailsFields.push({ key: 'Site Location:', value: 'Location Chainage' });
+        projectDetailsFields.push({ key: 'Site Ref:', value: '-' });
+        projectDetailsFields.push({ key: 'Test Pit Ref:', value: '-' });
+        projectDetailsFields.push({ key: 'DCP Reference:', value: '-' });
+        projectDetailsFields.push({ key: 'Core:', value: 'Core 1' });
       }
+      
+      // Divide the width into 3 columns
+      const colWidth = contentWidth / 3;
+      const fieldVerticalSpacing = 12; // Increased spacing between fields (vertical)
+      const maxLabelWidth = 80; // Maximum width for labels
+      
+      // Function to render a field with proper spacing
+      const renderField = (field, x, y) => {
+        // Calculate heights for label and value with wrapping
+        const labelOptions = {
+          width: maxLabelWidth,
+          align: 'left'
+        };
+        
+        const valueOptions = {
+          width: colWidth - maxLabelWidth - 10,
+          align: 'left'
+        };
+        
+        const labelHeight = doc.heightOfString(field.key, labelOptions);
+        const valueHeight = doc.heightOfString(field.value, valueOptions);
+        
+        // Draw the label with wrapping
+        doc.fontSize(9).font('Helvetica-Bold')
+          .fillColor('#000000')
+          .text(field.key, x, y, labelOptions);
+        
+        // Draw the value
+        doc.fontSize(9).font('Helvetica')
+          .fillColor('#000000')
+          .text(field.value, x + maxLabelWidth + 5, y, valueOptions);
+        
+        // Return the total height used by this field (maximum of label and value heights)
+        return Math.max(labelHeight, valueHeight);
+      };
+      
+      // Create a completely new layout system that handles multi-line fields properly
+      // Track the current Y position for each column
+      const colYPositions = [currentY, currentY, currentY];
+      
+      // Process each field and place it in the appropriate column
+      projectDetailsFields.forEach(field => {
+        // Find the column with the lowest current Y position
+        const minColIndex = colYPositions.indexOf(Math.min(...colYPositions));
+        const fieldX = 25 + (minColIndex * colWidth);
+        const fieldY = colYPositions[minColIndex];
+        
+        // Render the field and get its height
+        const fieldHeight = renderField(field, fieldX, fieldY);
+        
+        // Update the Y position for this column, adding both the field height AND vertical spacing
+        colYPositions[minColIndex] += fieldHeight + fieldVerticalSpacing;
+      });
+      
+      // Update currentY to the maximum Y position across all columns
+      currentY = Math.max(...colYPositions) + 10;
 
-      // TEST INFORMATION TABLE
-      if (Object.keys(simplifiedTestInfo).length > 0) {
-        // Section title with light blue background
-        doc.rect(25, currentY, contentWidth, 20)
-          .fillColor('#e6e6e6')
-          .fill();
-
-        doc.strokeColor('#000000')
-          .lineWidth(0.5)
-          .rect(25, currentY, contentWidth, 20)
-          .stroke();
-
-        doc.fontSize(10).font('Helvetica-Bold')
-          .fillColor('#003366')
-          .text('Test Information', 30, currentY + 6);
-
-        currentY += 20;
-
-        // Use 2-column layout with smaller text
-        const testInfoKeys = Object.keys(simplifiedTestInfo);
-        const columns = 2;
-        const rows = Math.ceil(testInfoKeys.length / columns);
-        const rowHeight = 15;
-
-        for (let i = 0; i < rows; i++) {
-          for (let j = 0; j < columns; j++) {
-            const index = i * columns + j;
-            if (index < testInfoKeys.length) {
-              const key = testInfoKeys[index];
-              const value = simplifiedTestInfo[key];
-
-              // Calculate column width and position
-              const colWidth = contentWidth / columns;
-              const colX = 25 + (j * colWidth);
-
-              // Draw cell with white background and black border
-              doc.rect(colX, currentY, colWidth, rowHeight)
-                .fillColor('#ffffff')
-                .fill();
-
-              doc.strokeColor('#000000')
-                .lineWidth(0.5)
-                .rect(colX, currentY, colWidth, rowHeight)
-                .stroke();
-
-              // Draw label with smaller font - vertically centered
-              doc.fontSize(7)
-                .font('Helvetica-Bold')
-                .fillColor('#333333')
-                .text(key + ':', colX + 3, currentY + (rowHeight / 2) - 3, {
-                  width: colWidth * 0.4 - 5,
-                  height: rowHeight - 4,
-                  ellipsis: true,
-                  align: 'left'
-                });
-
-              // Draw value with smaller font
-              doc.fontSize(7)
-                .font('Helvetica')
-                .fillColor('#333333')
-                .text(value, colX + 3 + (colWidth * 0.4), currentY + (rowHeight / 2) - 3, {
-                  width: colWidth * 0.6 - 5,
-                  height: rowHeight - 4,
-                  ellipsis: true,
-                  align: 'left'
-                });
-            }
-          }
-          currentY += rowHeight;
-        }
-      }
+      // ----- SAMPLE / MATERIAL INFORMATION SECTION -----
+      // Section header with blue text
+      doc.fontSize(11).font('Helvetica-Bold')
+        .fillColor('#3498db') // Blue color for section header
+        .text('Sample / Material Information', 25, currentY);
 
       currentY += 20;
 
-      // TEST RESULT SECTION
-      doc.fontSize(12).font('Helvetica-Bold')
-        .fillColor('#000000')
-        .text('Test Result', 25, currentY);
+      // Sample/Material Information fields
+      const sampleMaterialFields = [];
+      
+      if (reportData.testInfo) {
+        Object.entries(reportData.testInfo).forEach(([key, value]) => {
+          // Skip fields already used in project details
+          if (key.toLowerCase().includes('project') || 
+              key.toLowerCase().includes('document') ||
+              key.toLowerCase().includes('job') ||
+              key.toLowerCase().includes('client') ||
+              key.toLowerCase().includes('site') ||
+              key.toLowerCase().includes('test location') ||
+              key.toLowerCase().includes('dcp reference') ||
+              key.toLowerCase().includes('core') ||
+              key.toLowerCase() === 'testtype' ||
+              key.toLowerCase() === 'testsubtype' ||
+              key.toLowerCase() === 'reportno' ||
+              key.toLowerCase() === 'reportissueno') {
+            return;
+          }
+          
+          // Include fields related to sample/material
+          if (key.toLowerCase().includes('material') || 
+              key.toLowerCase().includes('sample') ||
+              key.toLowerCase().includes('preparation') ||
+              key.toLowerCase().includes('method') ||
+              key.toLowerCase().includes('compaction') ||
+              key.toLowerCase().includes('sampling') ||
+              key.toLowerCase().includes('received') ||
+              key.toLowerCase().includes('description')) {
+            
+            const formattedKey = formatPropertyName(key) + ':';
+            const formattedValue = value !== null && value !== undefined ? String(value) : '-';
+            
+            sampleMaterialFields.push({ key: formattedKey, value: formattedValue });
+          }
+        });
+      }
+      
+      // If no sample/material fields were found, add placeholders
+      if (sampleMaterialFields.length === 0) {
+        sampleMaterialFields.push({ key: 'Material Type:', value: '6F2' });
+        sampleMaterialFields.push({ key: 'Material Description:', value: 'Crushed concrete with some brick and asphalt. This is a multi-line description to demonstrate proper spacing between fields.' });
+      }
+      
+      // Reset column Y positions for sample/material section
+      const sampleColYPositions = [currentY, currentY, currentY];
+      
+      // Process each sample/material field
+      sampleMaterialFields.forEach(field => {
+        // Find the column with the lowest current Y position
+        const minColIndex = sampleColYPositions.indexOf(Math.min(...sampleColYPositions));
+        const fieldX = 25 + (minColIndex * colWidth);
+        const fieldY = sampleColYPositions[minColIndex];
+        
+        // Render the field and get its height
+        const fieldHeight = renderField(field, fieldX, fieldY);
+        
+        // Update the Y position for this column, adding both the field height AND vertical spacing
+        sampleColYPositions[minColIndex] += fieldHeight + fieldVerticalSpacing;
+      });
+      
+      // Update currentY to the maximum Y position across all columns
+      currentY = Math.max(...sampleColYPositions) + 10;
 
-      // Add underline
-      doc.moveTo(25, currentY + 16)
-        .lineTo(pageWidth - 25, currentY + 16)
-        .lineWidth(2)
-        .stroke();
+      // ----- TEST RESULTS SECTION -----
+      // Section header with blue text
+      doc.fontSize(11).font('Helvetica-Bold')
+        .fillColor('#3498db') // Blue color for section header
+        .text('Test Results', 25, currentY);
 
-      currentY += 25;
+      currentY += 20;
 
-      // Calculate dimensions for the boxes - always use 70/30 split
-      const boxHeight = 300;
-      const leftBoxWidth = contentWidth * 0.7;
-      const rightBoxWidth = contentWidth * 0.3;
+      // Create a two-column layout for test results and graph
+      const leftColWidth = contentWidth * 0.4;  // 40% for test results
+      const rightColWidth = contentWidth * 0.6; // 60% for graph
 
-      // LEFT BOX - Graph
-      doc.rect(25, currentY, leftBoxWidth, boxHeight)
-        .strokeColor('#000000')
-        .lineWidth(1)
-        .stroke();
+      // Get calculated properties
+      const calculatedProperties = reportData.calculatedProperties || {};
+      const propertyEntries = Object.entries(calculatedProperties);
+      
+      // Calculate the available height for test results and graph
+      const availableHeight = pageHeight - currentY - 180; // Reserve space for compliance and footer
+      const testResultsHeight = Math.min(availableHeight, Math.max(propertyEntries.length * 20, 200));
+      
+      // Draw test results (left column)
+      let testResultsStartY = currentY;
+      let testResultsCurrentY = testResultsStartY;
+      
+      // If no calculated properties, use some placeholders based on the image
+      if (propertyEntries.length === 0) {
+        const placeholderResults = [
+          { key: 'Depth From:', value: '0 mm' },
+          { key: 'Depth To:', value: '630 mm' },
+          { key: 'Total Blows:', value: '36' },
+          { key: 'Average Blow Rate:', value: '13.2 mm/blow' },
+          { key: 'Estimated Cbr Range:', value: '8-15%' },
+          { key: 'Material Strength:', value: 'Medium to Stiff' }
+        ];
+        
+        // Draw each result with proper wrapping
+        placeholderResults.forEach((result) => {
+          // Calculate label height with wrapping
+          const labelOptions = {
+            width: 120,
+            align: 'left'
+          };
+          
+          const valueOptions = {
+            width: leftColWidth - 120 - 10,
+            align: 'left'
+          };
+          
+          const labelHeight = doc.heightOfString(result.key, labelOptions);
+          const valueHeight = doc.heightOfString(result.value, valueOptions);
+          
+          // Draw the label
+          doc.fontSize(9).font('Helvetica-Bold')
+            .fillColor('#000000')
+            .text(result.key, 25, testResultsCurrentY, labelOptions);
+          
+          // Draw the value
+          doc.fontSize(9).font('Helvetica')
+            .fillColor('#000000')
+            .text(result.value, 25 + 120, testResultsCurrentY, valueOptions);
+          
+          // Update Y position for the next field
+          const fieldHeight = Math.max(labelHeight, valueHeight);
+          testResultsCurrentY += fieldHeight + fieldVerticalSpacing;
+        });
+      } else {
+        // Use actual calculated properties
+        propertyEntries.forEach(([key, value]) => {
+          // Skip if we're running out of space
+          if (testResultsCurrentY > testResultsStartY + testResultsHeight - 20) return;
+          
+          // Format property name
+          const formattedKey = formatPropertyName(key) + ':';
+          
+          // Calculate label height with wrapping
+          const labelOptions = {
+            width: 120,
+            align: 'left'
+          };
+          
+          const valueOptions = {
+            width: leftColWidth - 120 - 10,
+            align: 'left'
+          };
+          
+          const labelHeight = doc.heightOfString(formattedKey, labelOptions);
+          const valueHeight = doc.heightOfString(value, valueOptions);
+          
+          // Draw the label
+          doc.fontSize(9).font('Helvetica-Bold')
+            .fillColor('#000000')
+            .text(formattedKey, 25, testResultsCurrentY, labelOptions);
+          
+          // Draw the value
+          doc.fontSize(9).font('Helvetica')
+            .fillColor('#000000')
+            .text(value, 25 + 120, testResultsCurrentY, valueOptions);
+          
+          // Update Y position for the next field
+          const fieldHeight = Math.max(labelHeight, valueHeight);
+          testResultsCurrentY += fieldHeight + fieldVerticalSpacing;
+        });
+      }
 
-      // RIGHT BOX - Calculated Properties
-      doc.rect(25 + leftBoxWidth, currentY, rightBoxWidth, boxHeight)
-        .strokeColor('#000000')
-        .lineWidth(1)
-        .stroke();
-
-      // Add graph to left box if available
+      // Draw graph (right column)
       if (graphs && graphs.length > 0) {
         const graph = graphs[0];
-
         const graphPadding = 10;
-        const graphWidth = leftBoxWidth - (graphPadding * 2);
-        const graphHeight = boxHeight - (graphPadding * 2);
+        
+        // Draw graph title
+        doc.fontSize(9).font('Helvetica-Bold')
+          .fillColor('#000000')
+          .text('GRAPH DATA', 25 + leftColWidth, testResultsStartY, {
+            width: rightColWidth,
+            align: 'center'
+          });
+        
+        // Calculate graph dimensions
+        const graphWidth = rightColWidth - (graphPadding * 2);
+        const graphHeight = testResultsHeight - 20;
 
-        // Draw graph
+        // Draw graph from base64
         doc.image(Buffer.from(graph.imageBase64, 'base64'), {
           fit: [graphWidth, graphHeight],
           align: 'center',
           valign: 'center',
-          x: 25 + graphPadding,
-          y: currentY + graphPadding
+          x: 25 + leftColWidth + graphPadding,
+          y: testResultsStartY + 20 + graphPadding
         });
+      }
 
-        if (graph.title) {
-          doc.fontSize(9).font('Helvetica')
-            .fillColor('#000000')
-            .text(graph.title,
-              25, currentY + boxHeight - 20, {
-              width: leftBoxWidth,
-              align: 'center',
-              ellipsis: true
-            });
-        }
-      } else {
-        doc.fontSize(16).font('Helvetica')
+      // Ensure currentY is set to the bottom of both columns
+      currentY = Math.max(testResultsCurrentY, testResultsStartY + testResultsHeight + 10);
+
+      // ----- COMPLIANCE STANDARD AND REMARKS SECTION -----
+      // Create two columns for compliance and remarks
+      const complianceWidth = contentWidth * 0.5;
+      const remarksWidth = contentWidth * 0.5;
+      
+      // Compliance section header with blue text
+      doc.fontSize(11).font('Helvetica-Bold')
+        .fillColor('#3498db') // Blue color for section header
+        .text('Compliance Standard', 25, currentY);
+
+      // Remarks section header with blue text
+      doc.fontSize(11).font('Helvetica-Bold')
+        .fillColor('#3498db') // Blue color for section header
+        .text('Remarks', 25 + complianceWidth + 10, currentY);
+
+      currentY += 20;
+
+      // Compliance standards content
+      const complianceText = reportData.complianceStandard || 
+        'Certified that testing was carried out in accordance with:\n' +
+        'BS 1377-2:2022';
+      
+      const complianceHeight = 80;
+      
+      doc.fontSize(9).font('Helvetica')
+        .fillColor('#000000')
+        .text(complianceText, 25, currentY, {
+          width: complianceWidth - 10,
+          align: 'left'
+        });
+      
+      // Additional standards if available
+      if (reportData.additionalStandards) {
+        doc.fontSize(9).font('Helvetica')
           .fillColor('#000000')
-          .text('Graph Data',
-            25, currentY + (boxHeight / 2) - 10, {
-            width: leftBoxWidth,
-            align: 'center'
+          .text(reportData.additionalStandards, 25, currentY + 30, {
+            width: complianceWidth - 10,
+            align: 'left'
           });
       }
 
-      // Add "Results" header to right box
-      doc.fontSize(12).font('Helvetica-Bold')
-        .fillColor('#000000')
-        .text('Results',
-          25 + leftBoxWidth, currentY + 10, {
-          width: rightBoxWidth,
-          align: 'center'
-        });
+      // Remarks content - blue outlined box
+      doc.rect(25 + complianceWidth + 10, currentY, remarksWidth - 10, complianceHeight)
+        .strokeColor('#3498db')
+        .lineWidth(1)
+        .stroke();
 
-      // Add calculated properties to right box in Excel-like table format
-      if (Object.keys(simplifiedProperties).length > 0) {
-        const tableStartY = currentY + 40;
-        const tableWidth = rightBoxWidth - 20;
-        const tableX = 25 + leftBoxWidth + 10;
-
-        // Limit to max 6 properties
-        const propertyEntries = Object.entries(simplifiedProperties).slice(0, 6);
-        const propertyCount = propertyEntries.length;
-
-        const minRowHeight = 25;
-        const availableHeight = boxHeight - 50;
-        const rowHeight = Math.max(minRowHeight, Math.min(30, availableHeight / (propertyCount + 1)));
-
-        // Draw table header row
-        doc.rect(tableX, tableStartY, tableWidth, rowHeight)
-          .fillColor('#e6e6e6')
-          .fill();
-
-        doc.strokeColor('#000000')
-          .lineWidth(0.5)
-          .rect(tableX, tableStartY, tableWidth, rowHeight)
-          .stroke();
-
-        // Draw header text (Property | Value)
-        const colWidth = tableWidth / 2;
-
-        // Property header
-        doc.rect(tableX, tableStartY, colWidth, rowHeight)
-          .strokeColor('#000000')
-          .lineWidth(0.5)
-          .stroke();
-
-        doc.fontSize(8).font('Helvetica-Bold')
+      // Add remarks text if available
+      if (reportData.remarks) {
+        doc.fontSize(9).font('Helvetica')
           .fillColor('#000000')
-          .text('Property',
-            tableX + 5, tableStartY + (rowHeight / 2) - 4, {
-            width: colWidth - 10,
+          .text(reportData.remarks, 25 + complianceWidth + 15, currentY + 10, {
+            width: remarksWidth - 20,
             align: 'left'
-          });
-
-        // Value header
-        doc.rect(tableX + colWidth, tableStartY, colWidth, rowHeight)
-          .strokeColor('#000000')
-          .lineWidth(0.5)
-          .stroke();
-
-        doc.fontSize(8).font('Helvetica-Bold')
-          .fillColor('#000000')
-          .text('Value',
-            tableX + colWidth + 5, tableStartY + (rowHeight / 2) - 4, {
-            width: colWidth - 10,
-            align: 'left'
-          });
-
-        // Draw data rows
-        let rowY = tableStartY + rowHeight;
-        propertyEntries.forEach(([key, value], index) => {
-          // Skip if we're running out of space
-          if (rowY > currentY + boxHeight - rowHeight) return;
-
-          // Draw row background
-          doc.rect(tableX, rowY, tableWidth, rowHeight)
-            .fillColor('#ffffff')
-            .fill();
-
-          doc.strokeColor('#000000')
-            .lineWidth(0.5)
-            .rect(tableX, rowY, tableWidth, rowHeight)
-            .stroke();
-
-          // Property cell
-          doc.rect(tableX, rowY, colWidth, rowHeight)
-            .strokeColor('#000000')
-            .lineWidth(0.5)
-            .stroke();
-
-          const textHeight = 7;
-          const verticalPadding = (rowHeight - textHeight) / 2;
-
-          // Draw property name with vertical centering
-          doc.fontSize(7).font('Helvetica')
-            .fillColor('#000000')
-            .text(key,
-              tableX + 5, rowY + verticalPadding, {
-              width: colWidth - 10,
-              height: rowHeight - (verticalPadding * 2),
-              align: 'left'
-            });
-
-          // Value cell
-          doc.rect(tableX + colWidth, rowY, colWidth, rowHeight)
-            .strokeColor('#000000')
-            .lineWidth(0.5)
-            .stroke();
-
-          // Draw value with vertical centering
-          doc.fontSize(7).font('Helvetica')
-            .fillColor('#000000')
-            .text(value,
-              tableX + colWidth + 5, rowY + verticalPadding, {
-              width: colWidth - 10,
-              height: rowHeight - (verticalPadding * 2),
-              align: 'left'
-            });
-
-          rowY += rowHeight;
-        });
-      } else {
-        // If no properties available
-        doc.fontSize(16).font('Helvetica')
-          .fillColor('#000000')
-          .text('Calculated\nproperties\npart',
-            25 + leftBoxWidth, currentY + (boxHeight / 2) - 30, {
-            width: rightBoxWidth,
-            align: 'center',
-            lineGap: 10
           });
       }
 
-      currentY += boxHeight + 20;
+      currentY += complianceHeight + 10;
 
-      // FOOTER SECTION - Positioned at the bottom of the page
-      const footerY = pageHeight - 225 - 20;
-
-      // Define the footer table structure
-      const leftColWidth = contentWidth * 0.7;
-      const rightColWidth = contentWidth * 0.3;
-
-      // Comments header cell with gray background
-      doc.rect(25, footerY, leftColWidth, 25)
-        .fillColor('#e6e6e6')
-        .fill();
-
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .rect(25, footerY, leftColWidth, 25)
-        .stroke();
-
-      // For and on behalf of AMTEST UK header cell with gray background
-      doc.rect(25 + leftColWidth, footerY, rightColWidth, 25)
-        .fillColor('#e6e6e6')
-        .fill();
-
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .rect(25 + leftColWidth, footerY, rightColWidth, 25)
-        .stroke();
-
-      // Comments header text - with vertical centering
-      doc.fontSize(8)
-        .font('Helvetica')
+      // Signature section
+      const signatureRowHeight = 20;
+      
+      // Approved signatory
+      doc.fontSize(9).font('Helvetica-Bold')
         .fillColor('#000000')
-        .text('Comments (e.g., any deviation from the standard test method, relevant information to the specific test)',
-          30, footerY + 8, {
-          width: leftColWidth - 15,
-          ellipsis: false,
-          lineBreak: true,
-          height: 25,
+        .text('Approved Signatory:', 25, currentY);
+        
+      doc.fontSize(9).font('Helvetica')
+        .fillColor('#000000')
+        .text(reportData.approvedSignatory || 'Dave Macken', 120, currentY);
+
+      // Position
+      doc.fontSize(9).font('Helvetica-Bold')
+        .fillColor('#000000')
+        .text('Position:', 25 + complianceWidth + 10, currentY);
+        
+      doc.fontSize(9).font('Helvetica')
+        .fillColor('#000000')
+        .text(reportData.position || 'Operations Manager', 80 + complianceWidth, currentY);
+
+      currentY += signatureRowHeight;
+
+      // Date reported - use current date
+      const currentDate = new Date();
+      const formattedDate = `${currentDate.getDate().toString().padStart(2, '0')}/${(currentDate.getMonth() + 1).toString().padStart(2, '0')}/${currentDate.getFullYear()}`;
+      
+      doc.fontSize(9).font('Helvetica-Bold')
+        .fillColor('#000000')
+        .text('Date Reported:', 25, currentY);
+        
+      doc.fontSize(9).font('Helvetica')
+        .fillColor('#000000')
+        .text(reportData.dateReported || formattedDate, 120, currentY);
+
+      // Signed
+      doc.fontSize(9).font('Helvetica-Bold')
+        .fillColor('#000000')
+        .text('Signed:', 25 + complianceWidth + 10, currentY);
+
+      // Add a signature image if available
+      if (reportData.signatureImage) {
+        doc.image(Buffer.from(reportData.signatureImage, 'base64'), {
+          fit: [50, 20],
+          x: 80 + complianceWidth,
+          y: currentY - 5
+        });
+      } else {
+        // Otherwise just add text
+        doc.fontSize(9).font('Helvetica-Oblique')
+          .fillColor('#000000')
+          .text('D.M.', 80 + complianceWidth, currentY);
+      }
+
+      currentY += signatureRowHeight + 20;
+
+      // Footer section with document info on the same line as footer text
+      const footerY = pageHeight - 70;
+      
+      // Footer text
+      const footerText = 
+        'The following apply unless otherwise stated under remarks\n' +
+        'Test results reported only relate to the items tested and apply to the sample as received.\n' +
+        'This report shall not be reproduced except in full without approval of the Laboratory.\n' +
+        'The laboratory does not apply a conformity statement to the Test Report as standard, unless specifically requested by the Client.\n' +
+        'All Remaining samples/remnants will be disposed of one month from today.';
+      
+      doc.fontSize(7).font('Helvetica')
+        .fillColor('#000000')
+        .text(footerText, 25, footerY, {
+          width: contentWidth - 120, // Leave space for document info
           align: 'left'
         });
 
-      // For and on behalf of AMTEST UK header text - with vertical centering
-      doc.fontSize(9).font('Helvetica')
+      // Document ID at bottom right - properly aligned in a single column
+      // Each item on its own line with proper spacing
+      const docInfoX = pageWidth - 120;
+      const lineSpacing = 10; // Consistent spacing between lines
+      
+      doc.fontSize(7).font('Helvetica')
         .fillColor('#000000')
-        .text('For and on behalf of AMTEST UK',
-          30 + leftColWidth, footerY + 8, {
-          width: rightColWidth - 10,
-          align: 'center',
-          ellipsis: true
-        });
-
-      // Comments content cell - large empty cell
-      doc.rect(25, footerY + 25, leftColWidth, 75)
-        .fillColor('#ffffff')
-        .fill();
-
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .rect(25, footerY + 25, leftColWidth, 75)
-        .stroke();
-
-      // Add analysis text if available
-      if (reportData.analysis) {
-        doc.fontSize(8).font('Helvetica')
-          .fillColor('#000000')
-          .text(reportData.analysis,
-            30, footerY + 30, {
-            width: leftColWidth - 10,
-            align: 'left'
-          });
-      }
-
-      // Approved by row
-      doc.rect(25 + leftColWidth, footerY + 25, rightColWidth / 2, 25)
-        .fillColor('#ffffff')
-        .fill();
-
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .rect(25 + leftColWidth, footerY + 25, rightColWidth / 2, 25)
-        .stroke();
-
-      doc.rect(25 + leftColWidth + rightColWidth / 2, footerY + 25, rightColWidth / 2, 25)
-        .fillColor('#ffffff')
-        .fill();
-
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .rect(25 + leftColWidth + rightColWidth / 2, footerY + 25, rightColWidth / 2, 25)
-        .stroke();
-
-      // Approved by text - with vertical centering
-      doc.fontSize(9).font('Helvetica')
+        .text('LTPIB', docInfoX, footerY);
+      
+      doc.fontSize(7).font('Helvetica')
         .fillColor('#000000')
-        .text('Approved by:',
-          30 + leftColWidth, footerY + 33, {
-          width: rightColWidth / 2 - 10,
-          ellipsis: true
-        });
-
-      doc.fontSize(9).font('Helvetica')
+        .text('DOC No.: AMT-LAB-S-TR-009', docInfoX, footerY + lineSpacing);
+      
+      doc.fontSize(7).font('Helvetica')
         .fillColor('#000000')
-        .text('R.Adams',
-          30 + leftColWidth + rightColWidth / 2, footerY + 33, {
-          width: rightColWidth / 2 - 10,
-          align: 'center',
-          ellipsis: true
-        });
-
-      // Position Held row
-      doc.rect(25 + leftColWidth, footerY + 50, rightColWidth / 2, 25)
-        .fillColor('#ffffff')
-        .fill();
-
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .rect(25 + leftColWidth, footerY + 50, rightColWidth / 2, 25)
-        .stroke();
-
-      doc.rect(25 + leftColWidth + rightColWidth / 2, footerY + 50, rightColWidth / 2, 25)
-        .fillColor('#ffffff')
-        .fill();
-
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .rect(25 + leftColWidth + rightColWidth / 2, footerY + 50, rightColWidth / 2, 25)
-        .stroke();
-
-      // Position Held text - with vertical centering
-      doc.fontSize(9).font('Helvetica')
+        .text('Revision: 001', docInfoX, footerY + lineSpacing * 2);
+      
+      doc.fontSize(7).font('Helvetica')
         .fillColor('#000000')
-        .text('Position Held:',
-          30 + leftColWidth, footerY + 58, {
-          width: rightColWidth / 2 - 10,
-          ellipsis: true
-        });
-
-      doc.fontSize(9).font('Helvetica')
-        .fillColor('#000000')
-        .text('Senior Technician',
-          30 + leftColWidth + rightColWidth / 2, footerY + 58, {
-          width: rightColWidth / 2 - 10,
-          align: 'center',
-          ellipsis: true
-        });
-
-      // Signature row
-      doc.rect(25 + leftColWidth, footerY + 75, rightColWidth / 2, 25)
-        .fillColor('#ffffff')
-        .fill();
-
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .rect(25 + leftColWidth, footerY + 75, rightColWidth / 2, 25)
-        .stroke();
-
-      doc.rect(25 + leftColWidth + rightColWidth / 2, footerY + 75, rightColWidth / 2, 25)
-        .fillColor('#ffffff')
-        .fill();
-
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .rect(25 + leftColWidth + rightColWidth / 2, footerY + 75, rightColWidth / 2, 25)
-        .stroke();
-
-      // Signature text - with vertical centering
-      doc.fontSize(9).font('Helvetica')
-        .fillColor('#000000')
-        .text('Signature:',
-          30 + leftColWidth, footerY + 83, {
-          width: rightColWidth / 2 - 10,
-          ellipsis: true
-        });
-
-      // Remarks header
-      doc.rect(25, footerY + 100, leftColWidth, 25)
-        .fillColor('#ffffff')
-        .fill();
-
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .rect(25, footerY + 100, leftColWidth, 25)
-        .stroke();
-
-      // Remarks header text - with vertical centering
-      doc.fontSize(9).font('Helvetica-Bold')
-        .fillColor('#000000')
-        .text('Remarks', 30, footerY + 108);
-
-      // Date Reported row
-      doc.rect(25 + leftColWidth, footerY + 100, rightColWidth / 2, 25)
-        .fillColor('#ffffff')
-        .fill();
-
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .rect(25 + leftColWidth, footerY + 100, rightColWidth / 2, 25)
-        .stroke();
-
-      doc.rect(25 + leftColWidth + rightColWidth / 2, footerY + 100, rightColWidth / 2, 25)
-        .fillColor('#ffffff')
-        .fill();
-
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .rect(25 + leftColWidth + rightColWidth / 2, footerY + 100, rightColWidth / 2, 25)
-        .stroke();
-
-      // Date Reported text - with vertical centering
-      doc.fontSize(9).font('Helvetica')
-        .fillColor('#000000')
-        .text('Date Reported:',
-          30 + leftColWidth, footerY + 108, {
-          width: rightColWidth / 2 - 10,
-          ellipsis: true
-        });
-
-      const reportDate = new Date().toLocaleDateString('en-GB', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-      }).replace(/\//g, '.');
-
-      doc.fontSize(9).font('Helvetica')
-        .fillColor('#000000')
-        .text(reportDate,
-          30 + leftColWidth + rightColWidth / 2, footerY + 108, {
-          width: rightColWidth / 2 - 10,
-          align: 'center',
-          ellipsis: true
-        });
-
-      // Remark 1 row (continued)
-      doc.rect(25, footerY + 125, leftColWidth, 25)
-        .fillColor('#ffffff')
-        .fill();
-
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .rect(25, footerY + 125, leftColWidth, 25)
-        .stroke();
-
-      // Report Issue No row
-      doc.rect(25 + leftColWidth, footerY + 125, rightColWidth / 2, 25)
-        .fillColor('#ffffff')
-        .fill();
-
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .rect(25 + leftColWidth, footerY + 125, rightColWidth / 2, 25)
-        .stroke();
-
-      doc.rect(25 + leftColWidth + rightColWidth / 2, footerY + 125, rightColWidth / 2, 25)
-        .fillColor('#ffffff')
-        .fill();
-
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .rect(25 + leftColWidth + rightColWidth / 2, footerY + 125, rightColWidth / 2, 25)
-        .stroke();
-
-      // Report Issue No text - with vertical centering
-      doc.fontSize(9).font('Helvetica')
-        .fillColor('#000000')
-        .text('Report Issue No:',
-          30 + leftColWidth, footerY + 133, {
-          width: rightColWidth / 2 - 10,
-          ellipsis: true
-        });
-
-      doc.fontSize(9).font('Helvetica')
-        .fillColor('#000000')
-        .text('001',
-          30 + leftColWidth + rightColWidth / 2, footerY + 133, {
-          width: rightColWidth / 2 - 10,
-          align: 'center',
-          ellipsis: true
-        });
-
-      // Draw a circle for bullet point 1
-      doc.circle(35, footerY + 137, 5)
-        .stroke();
-
-      // Add number 1 inside the circle
-      doc.fontSize(8).font('Helvetica')
-        .fillColor('#000000')
-        .text('1', 32, footerY + 134);
-
-      // Remark 1 text - with vertical centering
-      doc.fontSize(8)
-        .font('Helvetica')
-        .fillColor('#000000')
-        .text('Test results reported only relate to the item(s) tested and apply to the sample as received.',
-          45, footerY + 133, {
-          width: leftColWidth - 50,
-          ellipsis: false,
-          lineBreak: true,
-          height: 25
-        });
-
-      // Remark 2 row
-      doc.rect(25, footerY + 150, leftColWidth, 25)
-        .fillColor('#ffffff')
-        .fill();
-
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .rect(25, footerY + 150, leftColWidth, 25)
-        .stroke();
-
-      // Company address row
-      doc.rect(25 + leftColWidth, footerY + 150, rightColWidth, 25)
-        .fillColor('#ffffff')
-        .fill();
-
-      doc.strokeColor('#000000')
-        .lineWidth(0.5)
-        .rect(25 + leftColWidth, footerY + 150, rightColWidth, 25)
-        .stroke();
-
-      // Draw a circle for bullet point 2
-      doc.circle(35, footerY + 162, 5)
-        .stroke();
-
-      // Add number 2 inside the circle
-      doc.fontSize(8).font('Helvetica')
-        .fillColor('#000000')
-        .text('2', 32, footerY + 159);
-
-      // Remark 2 text - with vertical centering
-      doc.fontSize(8)
-        .font('Helvetica')
-        .fillColor('#000000')
-        .text('This report shall not be reproduced, except in full, without approval of the Laboratory.',
-          45, footerY + 158, {
-          width: leftColWidth - 50,
-          ellipsis: false,
-          lineBreak: true,
-          height: 25
-        });
-
-      // Company address text - with vertical centering
-      doc.fontSize(7)
-        .font('Helvetica')
-        .fillColor('#000000')
-        .text('AMTEST UK LTD Unit A 2D/6 Project Park, North Crescent, Canning Town E16 4TQ',
-          30 + leftColWidth, footerY + 155, {
-          width: rightColWidth - 15,
-          ellipsis: false,
-          lineBreak: true,
-          height: 25
-        });
+        .text('Issued: Jan 2025', docInfoX, footerY + lineSpacing * 3);
 
       // Finalize PDF
       doc.end();
@@ -1124,7 +980,6 @@ async function createPDF(reportData, graphs) {
     }
   });
 }
-
 
 // Image parser endpoint (modified to generate PDF with graphs)
 app.post('/api/imageparser', async (req, res) => {
@@ -1184,7 +1039,7 @@ Return a JSON object with the following structure:
   "analysis": "Brief analysis of the test results (50-100 words maximum)"
 }
 
-IMPORTANT INSTRUCTIONS FOR SPECIFIC TEST TYPES: (Sample Fields of Calculated Properties: So please generate the calculated Properties fields according to the test type like in the below conditions.)
+IMPORTANT INSTRUCTIONS FOR SPECIFIC TEST TYPES: (Sample Fields of Calculated Properties: So please generate the calculated Properties fields according to the test type like in the below conditions. And generate the graph data according to the graph axis in each example in the below conditions. Of course, the data is related nothing among the below things, you can generate as you mind.)
 
 - Determination of water content - soils
 Water Content (%)
@@ -1192,13 +1047,18 @@ Material Description:
 Lower Limit: 
 Upper Limit: 
 
+(Graph Axis: which you want)
+
 - Particle size distribution : Soils
 Sieve Size, Passing (Array)
+
+(Graph Axis: Sieze Sizes vs Percentage Passing)
 
 - Determination of particle density - gas jar method
 Particle Density(Mg/m3):
 Material Description:
 
+(Graph Axis: which you want)
 - Liquid and plastic limits: soils
 Water Contnt as Received (W)(%)
 Corrected Liquid Limit (WL)(%)
@@ -1215,6 +1075,8 @@ Test Reading
 Avg. Penetration
 Water Content
 
+(Graph Axis: Liquid Limit vs Plasticity Index)
+
 - Rammer/Hammer Maximum Dry Density/Water Content Relationship
 Grading Zone
 Maximum Dry Density
@@ -1224,7 +1086,7 @@ Dry Mass retained on 37.5 mm Test
 Measured Particle Density
 Assumed Particle Density
 
-Array of (Compaction Point No., Water Content %, Dry Density(Mg/m3))
+(Graph Axis: Water Content (%) vs Dry Density (Mg/m3))
 
 - Moisture Condition Value
 Moisture Condition Value
@@ -1233,9 +1095,13 @@ Percentage Retained on 20mm Sieve (%)
 Interpretation of Curve
 Preparation Method
 
+(Graph Axis: Moisture Condition Value vs Change in penetration)
+
 - Water Content Relation
 Array (Test No, MCV, Water Content)
 Percentage Retained on 20mm Sieve (%)
+
+(Graph Axis: Moisture Condition Value vs Water Content (%))
 
 - Determination of california Bearing ratio
 Test Result-Top (Load on Plunger @ 2.5mm Penetration, CBR Value @ 2.5mm Penetration, Load on Plunger @ 5.0 mm Penetration, CBR Value @ 5.0mm Penetration, Top Part Water Content
@@ -1244,11 +1110,15 @@ CBR Value for Top Part)
 Test Result-Base (Load on Plunger @ 2.5mm Penetration, CBR Value @ 2.5mm Penetration, Load on Plunger @ 5.0 mm Penetration, CBR Value @ 5.0mm Penetration, Top Part Water Content
 CBR Value for Top Part)
 
+(Graph Axis: Penetration Depth vs Penetration Resistance (kN))
+
 - Determination of Water Content of Aggregates
 Water Content (%)
 Material Description
 Lower Limit
 Upper Limit
+
+(Graph Axis: which you want)
 
 - Determination of Geometrical Properties of Aggregates (Constituent Classification)
 Test Drying Temperature
@@ -1260,8 +1130,12 @@ Clay Masonry Units: Calcium Silicate Masonry Units, Aerated non-Floating Concret
 Bituminous Materials
 Glass
 
+(Graph Axis: which you want)
+
 - Determinatin of In-Situ Shear Value - Hand Shear Vane Method
 The same data as the test data
+
+(Graph Axis: which you want)
 
 - Aggregate Particles between X mm and Y mm
 Mass of Dry Sample Tested
@@ -1270,10 +1144,14 @@ Particle Density(pssd)
 Apparent Particle Density (Pa)
 Water Absorption (Wa)
 
+(Graph Axis: which you want)
+
 - Los Angeles Abrasion - Standard Method
 The Los Angeles Coefficient (LA)
 Upper Aggregate Size (mm)
 Lower Aggregate Size (mm)
+
+(Graph Axis: which you want)
 
 - Concrete Core Compressive Strength
 Date Tested
@@ -1286,8 +1164,12 @@ Core Compressive Strength (to nearest 0.1 MPa(N/mm2))
 Any deviations from the standard of examination or compression testing
 Tested By
 
+(Graph Axis: which you want)
+
 - Concrete Cube Compressive Strenth
 The same data as the test specimen details
+
+(Graph Axis: which you want)
 
 - Determination of Chloride Migration Coefficient
 Comparison of Specimens of the following fields
@@ -1296,6 +1178,8 @@ Comparison of Specimens of the following fields
 3. Mean Chloride Migration Coefficient
 4. Variation of Chloride Migration Coefficient
 Comments on Testing
+
+(Graph Axis: which you want)
 
 - Plate Bearing Load Test (CBR)
 Maximum Applied Pressure
@@ -1306,6 +1190,8 @@ Modulus of Subgrade Reaction
 Corrected Modulus of Subgrade Reaction:
 Approximate CBR value (%)
 
+(Graph Axis: Average Settlement vs Bearing Pressure (kN/m3))
+
 - Estimation of CBR by Dynamic Cone Penetrometer Method
 Depth from (mm)
 Depth to (mm)
@@ -1313,9 +1199,12 @@ No. of Blows
 Blow Rate (mm/Blow)
 Estimated CBR (%)
 
+(Graph Axis: Which you want)
+
 - Concrete Pour Record - Slump Test / Flow Table Test, Air Content & Density
 The same data as the test data
 
+(Graph Axis: Which you want)
 
 NOTE: IT IS VERY IMPORTANT: We should check the test title carefully and please choose the correct instruction and generate the correct test result. And please avoid generating the same test data except for the conditions in the instructions.
 
