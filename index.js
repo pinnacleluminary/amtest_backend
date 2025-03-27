@@ -24,14 +24,12 @@ const fontBoldPath = path.join(__dirname, './assets/Helvetica-Bold.ttf');
 try {
   if (fs.existsSync(fontPath)) {
     registerFont(fontPath, { family: 'Helvetica', weight: 'normal' });
-    console.log('Successfully registered Helvetica font for charts');
   } else {
     console.warn('Warning: Helvetica.ttf not found at:', fontPath);
   }
 
   if (fs.existsSync(fontBoldPath)) {
     registerFont(fontBoldPath, { family: 'Helvetica', weight: 'bold' });
-    console.log('Successfully registered Helvetica-Bold font for charts');
   } else {
     console.warn('Warning: Helvetica-Bold.ttf not found at:', fontBoldPath);
   }
@@ -85,12 +83,12 @@ async function generateGraphs(graphData) {
     const width = 800;
     const height = 400;
     const backgroundColour = 'white';
-    
+
     // Create a chart callback that uses the registered Helvetica font
     const chartCallback = (ChartJS) => {
       // Check if Helvetica was successfully registered
       const fontFamily = fs.existsSync(fontPath) ? 'Helvetica' : 'Arial, Helvetica, sans-serif';
-      
+
       // Apply the font configuration globally
       ChartJS.defaults.font = {
         family: fontFamily,
@@ -98,9 +96,9 @@ async function generateGraphs(graphData) {
         weight: 'normal',
         lineHeight: 1.2
       };
-      
+
       ChartJS.defaults.color = '#333';
-      
+
       // Register a plugin to ensure consistent font rendering
       ChartJS.register({
         id: 'fontHandler',
@@ -111,11 +109,11 @@ async function generateGraphs(graphData) {
         }
       });
     };
-    
+
     // Create chart with Helvetica font handling
-    const chartJSNodeCanvas = new ChartJSNodeCanvas({ 
-      width, 
-      height, 
+    const chartJSNodeCanvas = new ChartJSNodeCanvas({
+      width,
+      height,
       backgroundColour,
       chartCallback: chartCallback
     });
@@ -125,22 +123,22 @@ async function generateGraphs(graphData) {
     for (const graph of graphData) {
       // Determine which font to use
       const fontFamily = fs.existsSync(fontPath) ? 'Helvetica' : 'Arial, Helvetica, sans-serif';
-      
+
       // Set chart type based on test type if not specified
       let chartType = graph.type || 'line';
-      
+
       // Special handling for specific test types
       if (graph.title && graph.title.toLowerCase().includes('particle size distribution')) {
         chartType = 'line';
       } else if (graph.title && graph.title.toLowerCase().includes('constituents')) {
         chartType = 'pie';
       } else if (graph.title && (
-        graph.title.toLowerCase().includes('strength') || 
+        graph.title.toLowerCase().includes('strength') ||
         graph.title.toLowerCase().includes('comparison')
       )) {
         chartType = 'bar';
       }
-      
+
       // Generate chart configuration with Helvetica font
       const configuration = {
         type: chartType,
@@ -154,7 +152,7 @@ async function generateGraphs(graphData) {
               borderWidth: dataset.borderWidth || 1,
               fill: dataset.fill !== undefined ? dataset.fill : false
             };
-            
+
             // Add type-specific styling
             if (chartType === 'line') {
               datasetConfig.backgroundColor = dataset.backgroundColor || 'rgba(54, 162, 235, 0.2)';
@@ -181,7 +179,7 @@ async function generateGraphs(graphData) {
                 'rgba(40, 159, 64, 0.7)',
                 'rgba(210, 199, 199, 0.7)'
               ];
-              
+
               datasetConfig.backgroundColor = dataset.backgroundColor || defaultColors;
               datasetConfig.borderColor = dataset.borderColor || '#fff';
               datasetConfig.borderWidth = dataset.borderWidth || 1;
@@ -190,7 +188,7 @@ async function generateGraphs(graphData) {
               datasetConfig.borderColor = dataset.borderColor || 'rgba(54, 162, 235, 1)';
               datasetConfig.pointRadius = dataset.pointRadius || 5;
             }
-            
+
             return datasetConfig;
           })
         },
@@ -239,7 +237,7 @@ async function generateGraphs(graphData) {
                   weight: 'bold',
                   family: fontFamily // Use Helvetica
                 },
-                padding: {top: 10, bottom: 10},
+                padding: { top: 10, bottom: 10 },
                 color: '#333'
               },
               ticks: {
@@ -265,7 +263,7 @@ async function generateGraphs(graphData) {
                   weight: 'bold',
                   family: fontFamily // Use Helvetica
                 },
-                padding: {top: 10, bottom: 10},
+                padding: { top: 10, bottom: 10 },
                 color: '#333'
               },
               ticks: {
@@ -305,11 +303,11 @@ async function generateGraphs(graphData) {
       try {
         // Add additional error handling and timeout
         const renderPromise = chartJSNodeCanvas.renderToBuffer(configuration);
-        
+
         const timeoutPromise = new Promise((_, reject) => {
           setTimeout(() => reject(new Error('Chart rendering timed out')), 15000);
         });
-        
+
         const imageBuffer = await Promise.race([renderPromise, timeoutPromise]);
         const imageBase64 = imageBuffer.toString('base64');
 
@@ -319,7 +317,7 @@ async function generateGraphs(graphData) {
         });
       } catch (renderError) {
         console.error('Error rendering chart:', renderError);
-        
+
         // Create a simpler fallback chart with minimal text
         const fallbackCanvas = new ChartJSNodeCanvas({ width, height, backgroundColour });
         const fallbackConfig = {
@@ -349,11 +347,11 @@ async function generateGraphs(graphData) {
             }
           }
         };
-        
+
         try {
           const fallbackBuffer = await fallbackCanvas.renderToBuffer(fallbackConfig);
           const fallbackBase64 = fallbackBuffer.toString('base64');
-          
+
           graphs.push({
             title: 'Chart Rendering Error',
             imageBase64: fallbackBase64
@@ -381,325 +379,86 @@ async function createPDF(reportData, graphs) {
     try {
       const pdfFilename = `test_report_${Date.now()}.pdf`;
       const pdfPath = path.join(tempDir, pdfFilename);
-
-      // Create PDF document with A4 size
       const doc = new PDFDocument({
         margins: { top: 20, bottom: 20, left: 25, right: 25 },
         size: 'A4',
         bufferPages: true
       });
-
       doc.registerFont('Helvetica', fontPath);
       doc.registerFont('Helvetica-Bold', fontBoldPath);
-
       const stream = fs.createWriteStream(pdfPath);
       doc.pipe(stream);
-
-      // Document properties
       const pageWidth = doc.page.width;
       const contentWidth = pageWidth - 50;
       const pageHeight = doc.page.height;
-
-      // ----- HEADER SECTION -----
       let currentY = 20;
-
-      // Get title from test data
-      const testTitle = reportData.testInfo?.testType || 'Material Test Report';
+      const testTitle = reportData.testInfo?.testType || reportData.testInfo?.testTitle || 'Material Test Report';
       const testSubtitle = reportData.testInfo?.testSubtype || '';
-
-      // Calculate company info width based on the longest text line
-      const companyInfoWidth = 180; // Fixed width for company info
-      
-      // Calculate logo dimensions to match company info width
+      const companyInfoWidth = 180;
       const logoWidth = companyInfoWidth;
-      const logoHeight = 60; // Maintain aspect ratio
+      const logoHeight = 60;
       const logoX = pageWidth - logoWidth - 25;
       const logoY = currentY;
-
-      // Add logo on the right side - resized to match company info width
       const logoPath = path.join(__dirname, './assets/logo.png');
-      doc.image(logoPath, logoX, logoY, {
-        width: logoWidth,
-        height: logoHeight
-      });
-
-      // Report title - left aligned
-      doc.fontSize(12).font('Helvetica-Bold')
-        .fillColor('#000000')
-        .text('Test Report:', 25, currentY);
-      
+      doc.image(logoPath, logoX, logoY, { width: logoWidth, height: logoHeight });
+      doc.fontSize(12).font('Helvetica-Bold').fillColor('#000000').text('Test Report:', 25, currentY);
       currentY += 20;
-      
-      // Main title in blue - allow it to wrap if needed
-      doc.fontSize(14).font('Helvetica-Bold')
-        .fillColor('#3498db') // Blue color for main title
-        .text(testTitle + (testSubtitle ? ': ' + testSubtitle : ''), 25, currentY, {
-          width: pageWidth - logoWidth - 50, // Ensure it doesn't overlap with logo
-          align: 'left'
-        });
-      
-      // Calculate the height of the title text
-      const titleHeight = doc.heightOfString(testTitle + (testSubtitle ? ': ' + testSubtitle : ''), {
-        width: pageWidth - logoWidth - 50,
-        align: 'left'
-      });
-      
-      // Add company address below logo
+      doc.fontSize(14).font('Helvetica-Bold').fillColor('#3498db').text(testTitle + (testSubtitle ? ': ' + testSubtitle : ''), 25, currentY, { width: pageWidth - logoWidth - 50, align: 'left' });
+      const titleHeight = doc.heightOfString(testTitle + (testSubtitle ? ': ' + testSubtitle : ''), { width: pageWidth - logoWidth - 50, align: 'left' });
       const addressY = logoY + logoHeight + 5;
-      doc.fontSize(9).font('Helvetica')
-        .fillColor('#000000')
-        .text('Amtest UK, Unit A 2D/6, Project Park,', logoX, addressY, {
-          width: companyInfoWidth,
-          align: 'left'
-        });
-      
-      doc.fontSize(9).font('Helvetica')
-        .fillColor('#000000')
-        .text('North Crescent, London E16 4TQ', logoX, addressY + 12, {
-          width: companyInfoWidth,
-          align: 'left'
-        });
-      
-      doc.fontSize(9).font('Helvetica')
-        .fillColor('#000000')
-        .text('Tel: 020 8090 1199', logoX, addressY + 24, {
-          width: companyInfoWidth,
-          align: 'left'
-        });
-      
-      doc.fontSize(9).font('Helvetica')
-        .fillColor('#000000')
-        .text('Email: enquiries@amtest.uk', logoX, addressY + 36, {
-          width: companyInfoWidth,
-          align: 'left'
-        });
-      
-      // Report number on a separate line below company info
-      const reportNo = reportData.testInfo?.reportNo || 'INTLTP-10';
-      const reportIssueNo = reportData.testInfo?.reportIssueNo || '01';
-      
+      doc.fontSize(9).font('Helvetica').fillColor('#000000').text('Amtest UK, Unit A 2D/6, Project Park,', logoX, addressY, { width: companyInfoWidth, align: 'left' });
+      doc.fontSize(9).font('Helvetica').fillColor('#000000').text('North Crescent, London E16 4TQ', logoX, addressY + 12, { width: companyInfoWidth, align: 'left' });
+      doc.fontSize(9).font('Helvetica').fillColor('#000000').text('Tel: 020 8090 1199', logoX, addressY + 24, { width: companyInfoWidth, align: 'left' });
+      doc.fontSize(9).font('Helvetica').fillColor('#000000').text('Email: enquiries@amtest.uk', logoX, addressY + 36, { width: companyInfoWidth, align: 'left' });
+      const reportNo = reportData.testInfo?.issueNumber || 'INTLTP-10';
+      const reportIssueNo = reportData.testInfo?.revisionNumber || '01';
       const reportInfoY = addressY + 48;
-      doc.fontSize(9).font('Helvetica')
-        .fillColor('#000000')
-        .text(`No.: ${reportNo} | Issue No.: ${reportIssueNo}`, logoX, reportInfoY, {
-          width: companyInfoWidth,
-          align: 'left'
-        });
-
-      // Update currentY to be below both the title and company info
-      currentY = Math.max(
-        currentY + titleHeight + 20,
-        reportInfoY + 20
-      );
-
-      // ----- PROJECT DETAILS SECTION -----
-      // Section header with blue text
-      doc.fontSize(11).font('Helvetica-Bold')
-        .fillColor('#3498db') // Blue color for section header
-        .text('Project Details', 25, currentY);
-
+      doc.fontSize(9).font('Helvetica').fillColor('#000000').text(`No.: ${reportNo} | Issue No.: ${reportIssueNo}`, logoX, reportInfoY, { width: companyInfoWidth, align: 'left' });
+      currentY = Math.max(currentY + titleHeight + 20, reportInfoY + 20);
+      doc.fontSize(11).font('Helvetica-Bold').fillColor('#3498db').text('Project Details', 25, currentY);
       currentY += 20;
-
-      // Format property name from camelCase to title case
       const formatPropertyName = (key) => {
-        return key
-          .replace(/([A-Z])/g, ' $1')
-          .replace(/^./, str => str.toUpperCase())
-          .replace(/\s+/g, ' ')
-          .trim();
+        return key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).replace(/\s+/g, ' ').trim();
       };
-
-      // Project details fields
       const projectDetailsFields = [];
-      
       if (reportData.testInfo) {
         Object.entries(reportData.testInfo).forEach(([key, value]) => {
-          // Check if this is a project detail field
-          if (key.toLowerCase().includes('project') || 
-              key.toLowerCase().includes('document') ||
-              key.toLowerCase().includes('job') ||
-              key.toLowerCase().includes('client') ||
-              key.toLowerCase().includes('site') ||
-              key.toLowerCase().includes('test location') ||
-              key.toLowerCase().includes('dcp reference') ||
-              key.toLowerCase().includes('core')) {
-            
-            const formattedKey = formatPropertyName(key) + ':';
-            const formattedValue = value !== null && value !== undefined ? String(value) : '-';
-            
-            projectDetailsFields.push({ key: formattedKey, value: formattedValue });
-          }
+          const formattedKey = formatPropertyName(key) + ':';
+          const formattedValue = value !== null && value !== undefined ? String(value) : '-';
+          projectDetailsFields.push({ key: formattedKey, value: formattedValue });
         });
       }
-      
-      // If no project details were found, add placeholders
-      if (projectDetailsFields.length === 0) {
-        projectDetailsFields.push({ key: 'Document Number:', value: 'AMT-SITE-S-WS-004' });
-        projectDetailsFields.push({ key: 'Client:', value: 'AD BM' });
-        projectDetailsFields.push({ key: 'Document Reference:', value: 'STP02 & STP03' });
-        projectDetailsFields.push({ key: 'Job Number:', value: 'ADBS-0035' });
-        projectDetailsFields.push({ key: 'Test Location 1:', value: 'Beverley Road, Highnam Test Location Chainage' });
-        projectDetailsFields.push({ key: 'Site Location:', value: 'Location Chainage' });
-        projectDetailsFields.push({ key: 'Site Ref:', value: '-' });
-        projectDetailsFields.push({ key: 'Test Pit Ref:', value: '-' });
-        projectDetailsFields.push({ key: 'DCP Reference:', value: '-' });
-        projectDetailsFields.push({ key: 'Core:', value: 'Core 1' });
-      }
-      
-      // Divide the width into 3 columns
       const colWidth = contentWidth / 3;
-      const fieldVerticalSpacing = 12; // Increased spacing between fields (vertical)
-      const maxLabelWidth = 80; // Maximum width for labels
-      
-      // Function to render a field with proper spacing
+      const fieldVerticalSpacing = 12;
+      const maxLabelWidth = 80;
       const renderField = (field, x, y) => {
-        // Calculate heights for label and value with wrapping
-        const labelOptions = {
-          width: maxLabelWidth,
-          align: 'left'
-        };
-        
-        const valueOptions = {
-          width: colWidth - maxLabelWidth - 10,
-          align: 'left'
-        };
-        
+        const labelOptions = { width: maxLabelWidth, align: 'left' };
+        const valueOptions = { width: colWidth - maxLabelWidth - 10, align: 'left' };
         const labelHeight = doc.heightOfString(field.key, labelOptions);
         const valueHeight = doc.heightOfString(field.value, valueOptions);
-        
-        // Draw the label with wrapping
-        doc.fontSize(9).font('Helvetica-Bold')
-          .fillColor('#000000')
-          .text(field.key, x, y, labelOptions);
-        
-        // Draw the value
-        doc.fontSize(9).font('Helvetica')
-          .fillColor('#000000')
-          .text(field.value, x + maxLabelWidth + 5, y, valueOptions);
-        
-        // Return the total height used by this field (maximum of label and value heights)
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000').text(field.key, x, y, labelOptions);
+        doc.fontSize(9).font('Helvetica').fillColor('#000000').text(field.value, x + maxLabelWidth + 5, y, valueOptions);
         return Math.max(labelHeight, valueHeight);
       };
-      
-      // Create a completely new layout system that handles multi-line fields properly
-      // Track the current Y position for each column
       const colYPositions = [currentY, currentY, currentY];
-      
-      // Process each field and place it in the appropriate column
       projectDetailsFields.forEach(field => {
-        // Find the column with the lowest current Y position
         const minColIndex = colYPositions.indexOf(Math.min(...colYPositions));
         const fieldX = 25 + (minColIndex * colWidth);
         const fieldY = colYPositions[minColIndex];
-        
-        // Render the field and get its height
         const fieldHeight = renderField(field, fieldX, fieldY);
-        
-        // Update the Y position for this column, adding both the field height AND vertical spacing
         colYPositions[minColIndex] += fieldHeight + fieldVerticalSpacing;
       });
-      
-      // Update currentY to the maximum Y position across all columns
       currentY = Math.max(...colYPositions) + 10;
-
-      // ----- SAMPLE / MATERIAL INFORMATION SECTION -----
-      // Section header with blue text
-      doc.fontSize(11).font('Helvetica-Bold')
-        .fillColor('#3498db') // Blue color for section header
-        .text('Sample / Material Information', 25, currentY);
-
+      doc.fontSize(11).font('Helvetica-Bold').fillColor('#3498db').text('Test Results', 25, currentY);
       currentY += 20;
-
-      // Sample/Material Information fields
-      const sampleMaterialFields = [];
-      
-      if (reportData.testInfo) {
-        Object.entries(reportData.testInfo).forEach(([key, value]) => {
-          // Skip fields already used in project details
-          if (key.toLowerCase().includes('project') || 
-              key.toLowerCase().includes('document') ||
-              key.toLowerCase().includes('job') ||
-              key.toLowerCase().includes('client') ||
-              key.toLowerCase().includes('site') ||
-              key.toLowerCase().includes('test location') ||
-              key.toLowerCase().includes('dcp reference') ||
-              key.toLowerCase().includes('core') ||
-              key.toLowerCase() === 'testtype' ||
-              key.toLowerCase() === 'testsubtype' ||
-              key.toLowerCase() === 'reportno' ||
-              key.toLowerCase() === 'reportissueno') {
-            return;
-          }
-          
-          // Include fields related to sample/material
-          if (key.toLowerCase().includes('material') || 
-              key.toLowerCase().includes('sample') ||
-              key.toLowerCase().includes('preparation') ||
-              key.toLowerCase().includes('method') ||
-              key.toLowerCase().includes('compaction') ||
-              key.toLowerCase().includes('sampling') ||
-              key.toLowerCase().includes('received') ||
-              key.toLowerCase().includes('description')) {
-            
-            const formattedKey = formatPropertyName(key) + ':';
-            const formattedValue = value !== null && value !== undefined ? String(value) : '-';
-            
-            sampleMaterialFields.push({ key: formattedKey, value: formattedValue });
-          }
-        });
-      }
-      
-      // If no sample/material fields were found, add placeholders
-      if (sampleMaterialFields.length === 0) {
-        sampleMaterialFields.push({ key: 'Material Type:', value: '6F2' });
-        sampleMaterialFields.push({ key: 'Material Description:', value: 'Crushed concrete with some brick and asphalt. This is a multi-line description to demonstrate proper spacing between fields.' });
-      }
-      
-      // Reset column Y positions for sample/material section
-      const sampleColYPositions = [currentY, currentY, currentY];
-      
-      // Process each sample/material field
-      sampleMaterialFields.forEach(field => {
-        // Find the column with the lowest current Y position
-        const minColIndex = sampleColYPositions.indexOf(Math.min(...sampleColYPositions));
-        const fieldX = 25 + (minColIndex * colWidth);
-        const fieldY = sampleColYPositions[minColIndex];
-        
-        // Render the field and get its height
-        const fieldHeight = renderField(field, fieldX, fieldY);
-        
-        // Update the Y position for this column, adding both the field height AND vertical spacing
-        sampleColYPositions[minColIndex] += fieldHeight + fieldVerticalSpacing;
-      });
-      
-      // Update currentY to the maximum Y position across all columns
-      currentY = Math.max(...sampleColYPositions) + 10;
-
-      // ----- TEST RESULTS SECTION -----
-      // Section header with blue text
-      doc.fontSize(11).font('Helvetica-Bold')
-        .fillColor('#3498db') // Blue color for section header
-        .text('Test Results', 25, currentY);
-
-      currentY += 20;
-
-      // Create a two-column layout for test results and graph
-      const leftColWidth = contentWidth * 0.4;  // 40% for test results
-      const rightColWidth = contentWidth * 0.6; // 60% for graph
-
-      // Get calculated properties
+      const leftColWidth = contentWidth * 0.4;
+      const rightColWidth = contentWidth * 0.6;
       const calculatedProperties = reportData.calculatedProperties || {};
       const propertyEntries = Object.entries(calculatedProperties);
-      
-      // Calculate the available height for test results and graph
-      const availableHeight = pageHeight - currentY - 180; // Reserve space for compliance and footer
+      const availableHeight = pageHeight - currentY - 180;
       const testResultsHeight = Math.min(availableHeight, Math.max(propertyEntries.length * 20, 200));
-      
-      // Draw test results (left column)
       let testResultsStartY = currentY;
       let testResultsCurrentY = testResultsStartY;
-      
-      // If no calculated properties, use some placeholders based on the image
       if (propertyEntries.length === 0) {
         const placeholderResults = [
           { key: 'Depth From:', value: '0 mm' },
@@ -709,277 +468,121 @@ async function createPDF(reportData, graphs) {
           { key: 'Estimated Cbr Range:', value: '8-15%' },
           { key: 'Material Strength:', value: 'Medium to Stiff' }
         ];
-        
-        // Draw each result with proper wrapping
         placeholderResults.forEach((result) => {
-          // Calculate label height with wrapping
-          const labelOptions = {
-            width: 120,
-            align: 'left'
-          };
-          
-          const valueOptions = {
-            width: leftColWidth - 120 - 10,
-            align: 'left'
-          };
-          
+          const labelOptions = { width: 120, align: 'left' };
+          const valueOptions = { width: leftColWidth - 120 - 10, align: 'left' };
           const labelHeight = doc.heightOfString(result.key, labelOptions);
           const valueHeight = doc.heightOfString(result.value, valueOptions);
-          
-          // Draw the label
-          doc.fontSize(9).font('Helvetica-Bold')
-            .fillColor('#000000')
-            .text(result.key, 25, testResultsCurrentY, labelOptions);
-          
-          // Draw the value
-          doc.fontSize(9).font('Helvetica')
-            .fillColor('#000000')
-            .text(result.value, 25 + 120, testResultsCurrentY, valueOptions);
-          
-          // Update Y position for the next field
+          doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000').text(result.key, 25, testResultsCurrentY, labelOptions);
+          doc.fontSize(9).font('Helvetica').fillColor('#000000').text(result.value, 25 + 120, testResultsCurrentY, valueOptions);
           const fieldHeight = Math.max(labelHeight, valueHeight);
           testResultsCurrentY += fieldHeight + fieldVerticalSpacing;
         });
       } else {
-        // Use actual calculated properties
         propertyEntries.forEach(([key, value]) => {
-          // Skip if we're running out of space
           if (testResultsCurrentY > testResultsStartY + testResultsHeight - 20) return;
-          
-          // Format property name
           const formattedKey = formatPropertyName(key) + ':';
-          
-          // Calculate label height with wrapping
-          const labelOptions = {
-            width: 120,
-            align: 'left'
-          };
-          
-          const valueOptions = {
-            width: leftColWidth - 120 - 10,
-            align: 'left'
-          };
-          
+          const labelOptions = { width: 120, align: 'left' };
+          const valueOptions = { width: leftColWidth - 120 - 10, align: 'left' };
           const labelHeight = doc.heightOfString(formattedKey, labelOptions);
           const valueHeight = doc.heightOfString(value, valueOptions);
-          
-          // Draw the label
-          doc.fontSize(9).font('Helvetica-Bold')
-            .fillColor('#000000')
-            .text(formattedKey, 25, testResultsCurrentY, labelOptions);
-          
-          // Draw the value
-          doc.fontSize(9).font('Helvetica')
-            .fillColor('#000000')
-            .text(value, 25 + 120, testResultsCurrentY, valueOptions);
-          
-          // Update Y position for the next field
+          doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000').text(formattedKey, 25, testResultsCurrentY, labelOptions);
+          doc.fontSize(9).font('Helvetica').fillColor('#000000').text(value, 25 + 120, testResultsCurrentY, valueOptions);
           const fieldHeight = Math.max(labelHeight, valueHeight);
           testResultsCurrentY += fieldHeight + fieldVerticalSpacing;
         });
       }
-
-      // Draw graph (right column)
       if (graphs && graphs.length > 0) {
         const graph = graphs[0];
         const graphPadding = 10;
-        
-        // Draw graph title
-        doc.fontSize(9).font('Helvetica-Bold')
-          .fillColor('#000000')
-          .text('GRAPH DATA', 25 + leftColWidth, testResultsStartY, {
-            width: rightColWidth,
-            align: 'center'
-          });
-        
-        // Calculate graph dimensions
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000').text('GRAPH DATA', 25 + leftColWidth, testResultsStartY, { width: rightColWidth, align: 'center' });
         const graphWidth = rightColWidth - (graphPadding * 2);
         const graphHeight = testResultsHeight - 20;
-
-        // Draw graph from base64
-        doc.image(Buffer.from(graph.imageBase64, 'base64'), {
-          fit: [graphWidth, graphHeight],
-          align: 'center',
-          valign: 'center',
-          x: 25 + leftColWidth + graphPadding,
-          y: testResultsStartY + 20 + graphPadding
-        });
+        doc.image(Buffer.from(graph.imageBase64, 'base64'), { fit: [graphWidth, graphHeight], align: 'center', valign: 'center', x: 25 + leftColWidth + graphPadding, y: testResultsStartY + 20 + graphPadding });
       }
-
-      // Ensure currentY is set to the bottom of both columns
       currentY = Math.max(testResultsCurrentY, testResultsStartY + testResultsHeight + 10);
-
-      // ----- COMPLIANCE STANDARD AND REMARKS SECTION -----
-      // Create two columns for compliance and remarks
       const complianceWidth = contentWidth * 0.5;
       const remarksWidth = contentWidth * 0.5;
-      
-      // Compliance section header with blue text
-      doc.fontSize(11).font('Helvetica-Bold')
-        .fillColor('#3498db') // Blue color for section header
-        .text('Compliance Standard', 25, currentY);
-
-      // Remarks section header with blue text
-      doc.fontSize(11).font('Helvetica-Bold')
-        .fillColor('#3498db') // Blue color for section header
-        .text('Remarks', 25 + complianceWidth + 10, currentY);
-
+      doc.fontSize(11).font('Helvetica-Bold').fillColor('#3498db').text('Compliance Standard', 25, currentY);
+      doc.fontSize(11).font('Helvetica-Bold').fillColor('#3498db').text('Remarks', 25 + complianceWidth + 10, currentY);
       currentY += 20;
-
-      // Compliance standards content
-      const complianceText = reportData.complianceStandard || 
-        'Certified that testing was carried out in accordance with:\n' +
-        'BS 1377-2:2022';
-      
+      const complianceText = reportData.complianceStandard || 'Certified that testing was carried out in accordance with:\nBS 1377-2:2022';
       const complianceHeight = 80;
-      
-      doc.fontSize(9).font('Helvetica')
-        .fillColor('#000000')
-        .text(complianceText, 25, currentY, {
-          width: complianceWidth - 10,
-          align: 'left'
-        });
-      
-      // Additional standards if available
+      doc.fontSize(9).font('Helvetica').fillColor('#000000').text(complianceText, 25, currentY, { width: complianceWidth - 10, align: 'left' });
       if (reportData.additionalStandards) {
-        doc.fontSize(9).font('Helvetica')
-          .fillColor('#000000')
-          .text(reportData.additionalStandards, 25, currentY + 30, {
-            width: complianceWidth - 10,
-            align: 'left'
-          });
+        doc.fontSize(9).font('Helvetica').fillColor('#000000').text(reportData.additionalStandards, 25, currentY + 30, { width: complianceWidth - 10, align: 'left' });
       }
-
-      // Remarks content - blue outlined box
-      doc.rect(25 + complianceWidth + 10, currentY, remarksWidth - 10, complianceHeight)
-        .strokeColor('#3498db')
-        .lineWidth(1)
-        .stroke();
-
-      // Add remarks text if available
+      doc.rect(25 + complianceWidth + 10, currentY, remarksWidth - 10, complianceHeight).strokeColor('#3498db').lineWidth(1).stroke();
       if (reportData.remarks) {
-        doc.fontSize(9).font('Helvetica')
-          .fillColor('#000000')
-          .text(reportData.remarks, 25 + complianceWidth + 15, currentY + 10, {
-            width: remarksWidth - 20,
-            align: 'left'
-          });
+        doc.fontSize(9).font('Helvetica').fillColor('#000000').text(reportData.remarks, 25 + complianceWidth + 15, currentY + 10, { width: remarksWidth - 20, align: 'left' });
       }
-
       currentY += complianceHeight + 10;
-
-      // Signature section
       const signatureRowHeight = 20;
-      
-      // Approved signatory
-      doc.fontSize(9).font('Helvetica-Bold')
-        .fillColor('#000000')
-        .text('Approved Signatory:', 25, currentY);
-        
-      doc.fontSize(9).font('Helvetica')
-        .fillColor('#000000')
-        .text(reportData.approvedSignatory || 'Dave Macken', 120, currentY);
-
-      // Position
-      doc.fontSize(9).font('Helvetica-Bold')
-        .fillColor('#000000')
-        .text('Position:', 25 + complianceWidth + 10, currentY);
-        
-      doc.fontSize(9).font('Helvetica')
-        .fillColor('#000000')
-        .text(reportData.position || 'Operations Manager', 80 + complianceWidth, currentY);
-
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000').text('Approved Signatory:', 25, currentY);
+      doc.fontSize(9).font('Helvetica').fillColor('#000000').text(reportData.approvedSignatory || 'Dave Macken', 120, currentY);
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000').text('Position:', 25 + complianceWidth + 10, currentY);
+      doc.fontSize(9).font('Helvetica').fillColor('#000000').text(reportData.position || 'Operations Manager', 80 + complianceWidth, currentY);
       currentY += signatureRowHeight;
-
-      // Date reported - use current date
       const currentDate = new Date();
       const formattedDate = `${currentDate.getDate().toString().padStart(2, '0')}/${(currentDate.getMonth() + 1).toString().padStart(2, '0')}/${currentDate.getFullYear()}`;
-      
-      doc.fontSize(9).font('Helvetica-Bold')
-        .fillColor('#000000')
-        .text('Date Reported:', 25, currentY);
-        
-      doc.fontSize(9).font('Helvetica')
-        .fillColor('#000000')
-        .text(reportData.dateReported || formattedDate, 120, currentY);
-
-      // Signed
-      doc.fontSize(9).font('Helvetica-Bold')
-        .fillColor('#000000')
-        .text('Signed:', 25 + complianceWidth + 10, currentY);
-
-      // Add a signature image if available
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000').text('Date Reported:', 25, currentY);
+      doc.fontSize(9).font('Helvetica').fillColor('#000000').text(reportData.dateReported || formattedDate, 120, currentY);
+      doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000').text('Signed:', 25 + complianceWidth + 10, currentY);
       if (reportData.signatureImage) {
-        doc.image(Buffer.from(reportData.signatureImage, 'base64'), {
-          fit: [50, 20],
-          x: 80 + complianceWidth,
-          y: currentY - 5
-        });
+        doc.image(Buffer.from(reportData.signatureImage, 'base64'), { fit: [50, 20], x: 80 + complianceWidth, y: currentY - 5 });
       } else {
-        // Otherwise just add text
-        doc.fontSize(9).font('Helvetica-Oblique')
-          .fillColor('#000000')
-          .text('D.M.', 80 + complianceWidth, currentY);
+        doc.fontSize(9).font('Helvetica-Oblique').fillColor('#000000').text('', 80 + complianceWidth, currentY);
       }
-
       currentY += signatureRowHeight + 20;
+      const footerY = pageHeight - 80;
+      const footerText = [
+        'The following apply unless otherwise stated under remarks',
+        'Test results reported only relate to the items tested and apply to the sample as received.',
+        'This report shall not be reproduced except in full without approval of the Laboratory.',
+        'The laboratory does not apply a conformity statement to the Test Report as standard, unless specifically requested by the Client.',
+        'All Remaining samples/remnants will be disposed of one month from today.'
+      ];
+      footerText.forEach((line, index) => {
+        doc.fontSize(7).font('Helvetica').fillColor('#000000').text(line, 25, footerY + (index * 10), { width: contentWidth - 120, align: 'left' });
+      });
 
-      // Footer section with document info on the same line as footer text
-      const footerY = pageHeight - 70;
-      
-      // Footer text
-      const footerText = 
-        'The following apply unless otherwise stated under remarks\n' +
-        'Test results reported only relate to the items tested and apply to the sample as received.\n' +
-        'This report shall not be reproduced except in full without approval of the Laboratory.\n' +
-        'The laboratory does not apply a conformity statement to the Test Report as standard, unless specifically requested by the Client.\n' +
-        'All Remaining samples/remnants will be disposed of one month from today.';
-      
-      doc.fontSize(7).font('Helvetica')
-        .fillColor('#000000')
-        .text(footerText, 25, footerY, {
-          width: contentWidth - 120, // Leave space for document info
-          align: 'left'
-        });
-
-      // Document ID at bottom right - properly aligned in a single column
-      // Each item on its own line with proper spacing
       const docInfoX = pageWidth - 120;
-      const lineSpacing = 10; // Consistent spacing between lines
-      
-      doc.fontSize(7).font('Helvetica')
-        .fillColor('#000000')
-        .text('LTPIB', docInfoX, footerY);
-      
-      doc.fontSize(7).font('Helvetica')
-        .fillColor('#000000')
-        .text('DOC No.: AMT-LAB-S-TR-009', docInfoX, footerY + lineSpacing);
-      
-      doc.fontSize(7).font('Helvetica')
-        .fillColor('#000000')
-        .text('Revision: 001', docInfoX, footerY + lineSpacing * 2);
-      
-      doc.fontSize(7).font('Helvetica')
-        .fillColor('#000000')
-        .text('Issued: Jan 2025', docInfoX, footerY + lineSpacing * 3);
+      const lineSpacing = 10;
+      let docInfoY = footerY;
 
-      // Finalize PDF
+      // Render "LTPIB"
+      doc.fontSize(7).font('Helvetica').fillColor('#000000').text('LTPIB', docInfoX, docInfoY);
+      docInfoY += lineSpacing;
+
+      // Render "DOC No."
+      const docNoText = `DOC No.: ${reportData.testInfo?.documentNumber || 'STP04 & STP05 / AMTSSUITE061WS-002'}`;
+      const docNoHeight = doc.heightOfString(docNoText, { width: 120, align: 'left' });
+      doc.fontSize(7).font('Helvetica').fillColor('#000000').text(docNoText, docInfoX, docInfoY, { width: 120, align: 'left' });
+      docInfoY += docNoHeight + lineSpacing;
+
+      // Render "Revision"
+      const revisionText = `Revision: ${reportData.testInfo?.revisionNumber || '001'}`;
+      doc.fontSize(7).font('Helvetica').fillColor('#000000').text(revisionText, docInfoX, docInfoY);
+      docInfoY += lineSpacing;
+
+      // Render "Issued"
+      const issuedText = `Issued: ${reportData.testInfo?.issueDate || 'Dec 2024'}`;
+      doc.fontSize(7).font('Helvetica').fillColor('#000000').text(issuedText, docInfoX, docInfoY);
       doc.end();
-
       stream.on('finish', () => {
         const pdfBase64 = fs.readFileSync(pdfPath, { encoding: 'base64' });
         resolve({ pdfPath, pdfBase64 });
       });
-
       stream.on('error', (error) => {
         reject(error);
       });
-
     } catch (error) {
       reject(error);
     }
   });
 }
+
+
 
 // Image parser endpoint (modified to generate PDF with graphs)
 app.post('/api/imageparser', async (req, res) => {
@@ -989,7 +592,7 @@ app.post('/api/imageparser', async (req, res) => {
     // Use Claude to analyze the data and extract structured information
     const analysisResponse = await anthropic.messages.create({
       model: "claude-3-7-sonnet-20250219",
-      max_tokens: 20000,
+      max_tokens: 5000,
       temperature: 0.2,
       system: `You are a materials science expert specializing in analyzing test data. Your task is to analyze the provided HTML table data from a materials test and extract structured information.
 
@@ -1244,19 +847,49 @@ Make sure to:
       throw new Error("Failed to parse analysis results");
     }
 
+    const missingFieldsResponse = await anthropic.messages.create({
+      model: "claude-3-7-sonnet-20250219",
+      max_tokens: 500,
+      temperature: 0.2,
+      system: `You are an expert in materials testing. Please analyze the following test information and return an array of missing essential field names as simple strings. The fields to check are (if there is a field which is the similar field, it is okay.): testTitle, testLocation, issueNumber, revIssueNumber, methodUsed, testerName, testCondition.`,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(reportData.testInfo)
+            }
+          ]
+        }
+      ]
+    });
+
+    // Extract missing fields as an array of strings
+
+    res.json({ missingFields: JSON.parse(missingFieldsResponse.content[0].text), reportData });
+  } catch (error) {
+    console.log(error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/generate-pdf', async (req, res) => {
+  try {
+    const { missingFieldValues, reportData } = req.body;
+
+    // Update reportData with missing field values
+    Object.assign(reportData.testInfo, missingFieldValues);
+
+
     // Generate graphs from the extracted data
     const graphs = await generateGraphs(reportData.graphData || []);
 
-    // Create PDF with the report data and graphs
+    // Create PDF with the updated report data and graphs
     const { pdfBase64 } = await createPDF(reportData, graphs);
 
-    // Send response with PDF and report data
-    res.json({
-      msg: analysisResponse.content,
-      pdfBase64: pdfBase64,
-      reportData: reportData
-    });
-
+    // Send response with PDF
+    res.json({ pdfBase64 });
   } catch (error) {
     console.log(error);
     res.status(400).json({ error: error.message });
