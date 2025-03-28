@@ -423,9 +423,11 @@ async function createPDF(reportData, graphs) {
       const projectDetailsFields = [];
       if (reportData.testInfo) {
         Object.entries(reportData.testInfo).forEach(([key, value]) => {
-          const formattedKey = formatPropertyName(key) + ':';
-          const formattedValue = value !== null && value !== undefined ? String(value) : '-';
-          projectDetailsFields.push({ key: formattedKey, value: formattedValue });
+          if (key !== 'testType' && key !== 'testTitle') {
+            const formattedKey = formatPropertyName(key) + ':';
+            const formattedValue = value !== null && value !== undefined ? String(value) : '-';
+            projectDetailsFields.push({ key: formattedKey, value: formattedValue });
+          }
         });
       }
       const colWidth = contentWidth / 3;
@@ -587,7 +589,7 @@ async function createPDF(reportData, graphs) {
 // Image parser endpoint (modified to generate PDF with graphs)
 app.post('/api/imageparser', async (req, res) => {
   try {
-    const { excelFile, htmlContent } = req.body;
+    const { htmlContent } = req.body;
 
     // Use Claude to analyze the data and extract structured information
     const analysisResponse = await anthropic.messages.create({
