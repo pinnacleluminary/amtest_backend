@@ -593,7 +593,7 @@ app.post('/api/imageparser', async (req, res) => {
 
     // Use Claude to analyze the data and extract structured information
     const analysisResponse = await anthropic.messages.create({
-      model: "claude-3-7-sonnet-20250219",
+      model: "claude-3-5-sonnet-20241022",
       max_tokens: 5000,
       temperature: 0.2,
       system: `You are a materials science expert specializing in analyzing test data. Your task is to analyze the provided HTML table data from a materials test and extract structured information.
