@@ -849,7 +849,7 @@ Make sure to:
 
     const missingFieldsResponse = await anthropic.messages.create({
       model: "claude-3-7-sonnet-20250219",
-      max_tokens: 500,
+      max_tokens: 2000,
       temperature: 0.2,
       system: `You are an expert in materials testing. Please analyze the following test information and return an array of missing essential field names as simple strings. The fields to check are (if there is a field which is the similar field, it is okay.): testTitle, testLocation, issueNumber, revIssueNumber, methodUsed, testerName, testCondition.`,
       messages: [
